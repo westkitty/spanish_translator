@@ -11,6 +11,17 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
         ws: true,
+        configure: (proxy, _options) => {
+          proxy.on('error', (err, _req, res) => {
+            console.error('Vite Proxy Link Error:', err.message);
+            // Respond with clean JSON instead of letting Vite serve index.html,
+            // which would make the client try to JSON.parse an HTML document.
+            if (res && 'writeHead' in res && !res.headersSent) {
+              res.writeHead(502, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Ingestion server unreachable.' }));
+            }
+          });
+        },
       }
     }
   }

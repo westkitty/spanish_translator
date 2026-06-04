@@ -85,6 +85,15 @@ export function useChunkUploader(options: UseChunkUploaderOptions = {}) {
         throw new Error(`Server responded with ${response.status}`);
       }
 
+      // Guard against the dev proxy / SPA fallback returning index.html with a
+      // 200 status, which would otherwise be treated as a successful chunk.
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error(
+          `Expected JSON ack but received '${contentType || 'unknown'}'. Is the ingestion server running on port 8000?`
+        );
+      }
+
       return response;
     } catch (err: any) {
       if (err.name === 'AbortError') {

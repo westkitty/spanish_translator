@@ -17,6 +17,33 @@ import { AudioCanvas } from './components/AudioCanvas';
 import { CaptionEditor, CaptionWord } from './components/CaptionEditor';
 import { CaptionExport } from './components/CaptionExport';
 
+// Defensive JSON fetch: guards against the dev proxy / SPA fallback serving an
+// HTML document (e.g. index.html) when the backend is offline. Parsing that as
+// JSON throws "unexpected token '<'", so we validate the content-type first and
+// surface a clear error instead.
+async function fetchJson(input: RequestInfo, init?: RequestInit): Promise<any> {
+  const res = await fetch(input, init);
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    await res.text().catch(() => '');
+    throw new Error(
+      `Expected JSON but received '${contentType || 'unknown'}' (status ${res.status}). ` +
+        `Is the ingestion server running on port 8000?`
+    );
+  }
+  if (!res.ok) {
+    let detail = `Status ${res.status}`;
+    try {
+      const body = await res.json();
+      detail = body.detail || body.error || detail;
+    } catch {
+      /* keep default detail */
+    }
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
 export default function App() {
   const [captions, setCaptions] = useState<CaptionWord[]>([]);
   const [transcribing, setTranscribing] = useState(false);
@@ -26,6 +53,9 @@ export default function App() {
   const [serverLogs, setServerLogs] = useState<string>('');
   const [backendProgress, setBackendProgress] = useState<number>(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // null = checking, true = reachable, false = offline
+  const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
 
   const pollingIntervalRef = useRef<number | null>(null);
 
@@ -64,6 +94,23 @@ export default function App() {
     };
   }, []);
 
+  // Probe backend connectivity at mount so we can warn before any upload attempt
+  useEffect(() => {
+    let cancelled = false;
+    const checkHealth = async () => {
+      try {
+        const data = await fetchJson('/api/health');
+        if (!cancelled) setBackendOnline(data.status === 'ok');
+      } catch {
+        if (!cancelled) setBackendOnline(false);
+      }
+    };
+    checkHealth();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Handle local file selection
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -84,10 +131,7 @@ export default function App() {
     
     pollingIntervalRef.current = window.setInterval(async () => {
       try {
-        const res = await fetch(`/api/jobs/${jobId}`);
-        if (!res.ok) throw new Error("Failed to query background engine state");
-        
-        const data = await res.json();
+        const data = await fetchJson(`/api/jobs/${jobId}`);
         setJobStatus(data.status);
         
         if (data.status === 'processing') {
@@ -115,29 +159,24 @@ export default function App() {
 
   const fetchFinalTranscript = async (jobId: string) => {
     try {
-      const res = await fetch(`/api/jobs/${jobId}/export?format=json`);
-      if (res.ok) {
-        const data = await res.json();
-        
-        // Load local file to player for immediate playback scrubbing
-        if (currentFile) {
-          const audioUrl = URL.createObjectURL(currentFile);
-          setSrc(audioUrl);
-        }
+      const data = await fetchJson(`/api/jobs/${jobId}/export?format=json`);
 
-        const mappedWords: CaptionWord[] = data.transcript.map((w: any, idx: number) => ({
-          id: `word-${idx}`,
-          text: w.word,
-          start: w.start,
-          end: w.end,
-        }));
-        
-        setCaptions(mappedWords);
-        setTranscribing(false);
-        setTranscriptionDone(true);
-      } else {
-        throw new Error("Export returned non-200 response");
+      // Load local file to player for immediate playback scrubbing
+      if (currentFile) {
+        const audioUrl = URL.createObjectURL(currentFile);
+        setSrc(audioUrl);
       }
+
+      const mappedWords: CaptionWord[] = data.transcript.map((w: any, idx: number) => ({
+        id: `word-${idx}`,
+        text: w.word,
+        start: w.start,
+        end: w.end,
+      }));
+
+      setCaptions(mappedWords);
+      setTranscribing(false);
+      setTranscriptionDone(true);
     } catch (err: any) {
       setServerLogs(`Data retrieval exception: ${err.message}`);
       setErrorMsg(err.message);
@@ -153,14 +192,12 @@ export default function App() {
         setJobStatus('queued');
         setServerLogs("All bytes safely appended to target file. Triggering pipeline process execution request...");
         try {
-          const processRes = await fetch(`/api/jobs/${uploadId}/process`, {
+          await fetchJson(`/api/jobs/${uploadId}/process`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ uploadId })
           });
-          
-          if (!processRes.ok) throw new Error("Processing handoff request rejected.");
-          
+
           startPolling(uploadId);
         } catch (err: any) {
           setJobStatus('failed');
@@ -228,16 +265,30 @@ export default function App() {
 
       {/* Main Body */}
       <main className="flex-grow flex flex-col gap-3.5 my-3 overflow-y-auto pr-0.5">
-        
+
+        {/* Backend offline banner */}
+        {backendOnline === false && (
+          <div className="bg-rose-950/70 border border-rose-700/70 rounded-xl p-3 flex items-center gap-2.5 text-[11px] text-rose-200 shadow-lg">
+            <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
+            <div>
+              <p className="font-bold">⚠️ Ingestion Engine Offline</p>
+              <p className="text-[10px] text-rose-300/80 mt-0.5 font-mono">
+                Run the uvicorn server on port 8000 to enable uploads.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Upload Panel */}
         <section className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-lg">
           {!currentFile ? (
-            <div className="relative border-2 border-dashed border-slate-800 hover:border-indigo-500/50 rounded-lg p-5 flex flex-col items-center justify-center text-center transition-colors">
+            <div className={`relative border-2 border-dashed rounded-lg p-5 flex flex-col items-center justify-center text-center transition-colors ${backendOnline === false ? 'border-slate-800 opacity-40' : 'border-slate-800 hover:border-indigo-500/50'}`}>
               <input
                 type="file"
                 accept="audio/*"
                 onChange={handleFileChange}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                disabled={backendOnline === false}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
               />
               <Upload className="w-8 h-8 text-indigo-400 mb-2" />
               <span className="text-xs font-semibold text-slate-200">Choose Audio File</span>
@@ -313,7 +364,8 @@ export default function App() {
                 {uploadProgress === 0 && !isUploading && (
                   <button
                     onClick={startUpload}
-                    className="w-full bg-indigo-600 hover:bg-indigo-500 active:scale-98 text-white font-bold py-2 rounded-lg text-xs transition-all shadow-md shadow-indigo-600/20"
+                    disabled={backendOnline === false}
+                    className="w-full bg-indigo-600 hover:bg-indigo-500 active:scale-98 text-white font-bold py-2 rounded-lg text-xs transition-all shadow-md shadow-indigo-600/20 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-indigo-600"
                   >
                     Start Segmented Upload
                   </button>

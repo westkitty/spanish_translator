@@ -24,6 +24,11 @@ JOBS_DB = {}
 class ProcessRequest(BaseModel):
     uploadId: str
 
+@app.get("/api/health")
+async def health_check():
+    """Lightweight connectivity probe used by the frontend at mount time."""
+    return {"status": "ok"}
+
 @app.put("/api/upload-chunk")
 async def upload_chunk(
     request: Request,
