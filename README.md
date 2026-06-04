@@ -2,8 +2,8 @@
 
 A fully **offline, on-device** Spanish audio transcription app. Pick an audio file,
 and Whisper runs **inside the app** (no server, no API, no uploads) to produce a
-word-timestamped transcript you can scrub, edit, and export. Optionally translate
-Spanish audio straight to English.
+word-timestamped Spanish transcript **and** an English translation — automatically,
+every run. Scrub, edit, and export both.
 
 ## How it works
 
@@ -26,9 +26,13 @@ Spanish audio straight to English.
 
 Total installed footprint is roughly **~100 MB** (app + ONNX runtime + base model).
 
-- **Spanish transcript:** `task: transcribe`, language Spanish → word-level Spanish text.
-- **English translation:** `task: translate` → Whisper translates Spanish audio to
-  English (still word-timestamped). No extra model required.
+Each run does **two passes on the same loaded model** (no extra download, no extra
+storage):
+
+- **Pass 1 — Spanish transcript:** `task: transcribe` → word-level Spanish text that
+  drives the timeline and editor.
+- **Pass 2 — English translation:** `task: translate` → segment-level English shown
+  in a read-only panel and included in every export.
 
 ## Project structure
 
@@ -44,8 +48,9 @@ frontend/
 │   │   └── useAudioPlayer.ts         # Playback synced to the timeline
 │   └── components/
 │       ├── AudioCanvas.tsx           # Waveform / scrub timeline
-│       ├── CaptionEditor.tsx         # Virtualized word editor
-│       └── CaptionExport.tsx         # TXT / timed-JSON / clipboard export
+│       ├── CaptionEditor.tsx         # Virtualized Spanish word editor
+│       ├── TranslationPanel.tsx      # Read-only English translation (click to seek)
+│       └── CaptionExport.tsx         # TXT / timed-JSON / clipboard (transcript + translation)
 ├── android/                          # Capacitor Android project
 └── capacitor.config.ts
 ```

@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { decodeAudioFile } from '../lib/audio';
 import type { CaptionWord } from '../components/CaptionEditor';
-import type { WhisperModel, WhisperTask } from '../lib/transcriber.worker';
+import type { WhisperModel } from '../lib/transcriber.worker';
 
 export type TranscriberStatus =
   | 'idle'
   | 'decoding'
   | 'loading-model'
   | 'transcribing'
+  | 'translating'
   | 'done'
   | 'error';
 
@@ -16,10 +17,21 @@ export interface ModelFileProgress {
   progress: number; // 0-100
 }
 
+export interface TranslationSegment {
+  id: string;
+  text: string;
+  start: number;
+  end: number;
+}
+
+export interface Translation {
+  segments: TranslationSegment[];
+  text: string;
+}
+
 interface RunOptions {
   model: WhisperModel;
-  task: WhisperTask;
-  language: string | null;
+  language?: string;
 }
 
 export function useTranscriber() {
@@ -27,6 +39,7 @@ export function useTranscriber() {
   const [status, setStatus] = useState<TranscriberStatus>('idle');
   const [modelFiles, setModelFiles] = useState<Record<string, ModelFileProgress>>({});
   const [captions, setCaptions] = useState<CaptionWord[]>([]);
+  const [translation, setTranslation] = useState<Translation | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Lazily spin up the worker (module type so it can `import` Transformers.js).
@@ -51,6 +64,7 @@ export function useTranscriber() {
     async (file: File, opts: RunOptions) => {
       setError(null);
       setCaptions([]);
+      setTranslation(null);
       setModelFiles({});
 
       let samples: Float32Array;
@@ -88,6 +102,7 @@ export function useTranscriber() {
             break;
           case 'result':
             setCaptions(msg.words as CaptionWord[]);
+            setTranslation((msg.translation as Translation) ?? null);
             setStatus('done');
             worker.removeEventListener('message', handle);
             break;
@@ -107,8 +122,7 @@ export function useTranscriber() {
           type: 'run',
           audio: samples,
           model: opts.model,
-          task: opts.task,
-          language: opts.language,
+          language: opts.language ?? 'spanish',
         },
         [samples.buffer]
       );
@@ -119,9 +133,10 @@ export function useTranscriber() {
   const reset = useCallback(() => {
     setStatus('idle');
     setCaptions([]);
+    setTranslation(null);
     setModelFiles({});
     setError(null);
   }, []);
 
-  return { status, modelFiles, captions, error, run, reset, setCaptions };
+  return { status, modelFiles, captions, translation, error, run, reset, setCaptions };
 }

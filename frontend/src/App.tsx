@@ -17,14 +17,14 @@ import { useTranscriber } from './hooks/useTranscriber';
 import { AudioCanvas } from './components/AudioCanvas';
 import { CaptionEditor } from './components/CaptionEditor';
 import { CaptionExport } from './components/CaptionExport';
-import type { WhisperModel, WhisperTask } from './lib/transcriber.worker';
+import { TranslationPanel } from './components/TranslationPanel';
+import type { WhisperModel } from './lib/transcriber.worker';
 
 export default function App() {
   const [file, setFile] = useState<File | null>(null);
   const [model, setModel] = useState<WhisperModel>('Xenova/whisper-base');
-  const [task, setTask] = useState<WhisperTask>('transcribe');
 
-  const { status, modelFiles, captions, error, run, reset, setCaptions } = useTranscriber();
+  const { status, modelFiles, captions, translation, error, run, reset, setCaptions } = useTranscriber();
 
   const {
     isPlaying,
@@ -36,7 +36,11 @@ export default function App() {
     seek,
   } = useAudioPlayer();
 
-  const isWorking = status === 'decoding' || status === 'loading-model' || status === 'transcribing';
+  const isWorking =
+    status === 'decoding' ||
+    status === 'loading-model' ||
+    status === 'transcribing' ||
+    status === 'translating';
   const done = status === 'done';
 
   // Wire the local file into the audio player for scrubbing once transcribed.
@@ -63,10 +67,8 @@ export default function App() {
 
   const handleStart = () => {
     if (!file) return;
-    // Whisper's "translate" task always targets English; "transcribe" keeps the
-    // source language. We hint Spanish for transcription and let translate auto-detect.
-    const language = task === 'transcribe' ? 'spanish' : null;
-    run(file, { model, task, language });
+    // Always produces both: a Spanish transcript and an English translation.
+    run(file, { model, language: 'spanish' });
   };
 
   // Aggregate model-download progress into a single percentage.
@@ -82,7 +84,8 @@ export default function App() {
     'loading-model': modelProgress > 0 && modelProgress < 100
       ? `Downloading model (${modelProgress}%)…`
       : 'Loading model into memory…',
-    transcribing: 'Running on-device Whisper inference…',
+    transcribing: 'Transcribing Spanish (1/2)…',
+    translating: 'Translating to English (2/2)…',
   };
 
   const formatBytes = (bytes: number) => {
@@ -157,7 +160,7 @@ export default function App() {
 
               {/* Engine options */}
               {!isWorking && !done && (
-                <div className="grid grid-cols-2 gap-2.5">
+                <div className="space-y-2">
                   <label className="flex flex-col gap-1">
                     <span className="text-[10px] uppercase tracking-wide text-slate-500 flex items-center gap-1">
                       <Cpu className="w-3 h-3" /> Model
@@ -171,19 +174,10 @@ export default function App() {
                       <option value="Xenova/whisper-tiny">Tiny · fast (~45 MB)</option>
                     </select>
                   </label>
-                  <label className="flex flex-col gap-1">
-                    <span className="text-[10px] uppercase tracking-wide text-slate-500 flex items-center gap-1">
-                      <Languages className="w-3 h-3" /> Output
-                    </span>
-                    <select
-                      value={task}
-                      onChange={(e) => setTask(e.target.value as WhisperTask)}
-                      className="bg-slate-950 text-slate-200 border border-slate-700 rounded px-2 py-1.5 text-xs focus:border-indigo-500 focus:outline-none"
-                    >
-                      <option value="transcribe">Spanish transcript</option>
-                      <option value="translate">English translation</option>
-                    </select>
-                  </label>
+                  <p className="text-[10px] text-slate-500 flex items-center gap-1.5">
+                    <Languages className="w-3 h-3 text-emerald-400" />
+                    Outputs a Spanish transcript <span className="text-slate-600">+</span> English translation automatically.
+                  </p>
                 </div>
               )}
 
@@ -204,7 +198,7 @@ export default function App() {
                   onClick={handleStart}
                   className="w-full bg-indigo-600 hover:bg-indigo-500 active:scale-98 text-white font-bold py-2 rounded-lg text-xs transition-all shadow-md shadow-indigo-600/20"
                 >
-                  {task === 'translate' ? 'Transcribe → Translate to English' : 'Transcribe Spanish Audio'}
+                  Transcribe &amp; Translate
                 </button>
               )}
 
@@ -223,7 +217,13 @@ export default function App() {
             <RefreshCw className="w-8 h-8 text-indigo-400 animate-spin" />
             <div>
               <h3 className="text-sm font-semibold text-slate-200 uppercase tracking-wide">
-                {status === 'transcribing' ? 'Inference' : status === 'decoding' ? 'Decoding' : 'Model'}
+                {status === 'transcribing'
+                  ? 'Transcribing'
+                  : status === 'translating'
+                  ? 'Translating'
+                  : status === 'decoding'
+                  ? 'Decoding'
+                  : 'Model'}
               </h3>
               <p className="text-xs text-slate-400 mt-1 font-mono">{statusLabel[status]}</p>
             </div>
@@ -276,7 +276,7 @@ export default function App() {
                 </div>
 
                 <div className="flex items-center gap-1 text-[10px] bg-indigo-950/40 text-indigo-400 border border-indigo-900/60 rounded px-2 py-0.5 font-mono">
-                  <CheckCircle className="w-3.5 h-3.5" /> {task === 'translate' ? 'EN' : 'ES'}
+                  <CheckCircle className="w-3.5 h-3.5" /> ES + EN
                 </div>
               </div>
             </div>
@@ -293,8 +293,15 @@ export default function App() {
               onSeek={seek}
             />
 
+            <TranslationPanel
+              translation={translation}
+              currentTime={currentTime}
+              onSeek={seek}
+            />
+
             <CaptionExport
               captions={captions}
+              translation={translation}
               fileName={file ? file.name : 'spanish-captions'}
             />
           </>

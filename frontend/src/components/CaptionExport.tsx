@@ -1,14 +1,19 @@
 import { useState } from 'react';
 import { FileText, Code, Clipboard, Check } from 'lucide-react';
 import { CaptionWord } from './CaptionEditor';
+import type { Translation } from '../hooks/useTranscriber';
 
 interface TranscriptExportProps {
   captions: CaptionWord[];
+  translation?: Translation | null;
   fileName?: string;
 }
 
-export function CaptionExport({ captions, fileName = 'transcript' }: TranscriptExportProps) {
+export function CaptionExport({ captions, translation, fileName = 'transcript' }: TranscriptExportProps) {
   const [copied, setCopied] = useState(false);
+
+  const spanishText = captions.map((w) => w.text).join(' ');
+  const englishText = translation?.text ?? '';
 
   // Trigger file download
   const triggerDownload = (content: string, mimeType: string, extension: string) => {
@@ -26,9 +31,16 @@ export function CaptionExport({ captions, fileName = 'transcript' }: TranscriptE
     URL.revokeObjectURL(url);
   };
 
+  const buildPlainText = () => {
+    let content = `=== Spanish Transcript ===\n${spanishText}`;
+    if (englishText) {
+      content += `\n\n=== English Translation ===\n${englishText}`;
+    }
+    return content;
+  };
+
   const handleExportTXT = () => {
-    const content = captions.map((w) => w.text).join(' ');
-    triggerDownload(content, 'text/plain;charset=utf-8', 'txt');
+    triggerDownload(buildPlainText(), 'text/plain;charset=utf-8', 'txt');
   };
 
   const handleExportJSON = () => {
@@ -36,22 +48,32 @@ export function CaptionExport({ captions, fileName = 'transcript' }: TranscriptE
       meta: {
         exportedAt: new Date().toISOString(),
         totalWords: captions.length,
+        hasTranslation: Boolean(translation),
       },
-      words: captions.map(w => ({
-        text: w.text,
-        start: w.start,
-        end: w.end
-      }))
+      transcript: {
+        language: 'spanish',
+        text: spanishText,
+        words: captions.map((w) => ({ text: w.text, start: w.start, end: w.end })),
+      },
+      translation: translation
+        ? {
+            language: 'english',
+            text: translation.text,
+            segments: translation.segments.map((s) => ({
+              text: s.text,
+              start: s.start,
+              end: s.end,
+            })),
+          }
+        : null,
     };
-    const content = JSON.stringify(payload, null, 2);
-    triggerDownload(content, 'application/json;charset=utf-8', 'json');
+    triggerDownload(JSON.stringify(payload, null, 2), 'application/json;charset=utf-8', 'json');
   };
 
   const handleCopyTranscript = async () => {
     if (captions.length === 0) return;
-    const text = captions.map((w) => w.text).join(' ');
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(buildPlainText());
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {

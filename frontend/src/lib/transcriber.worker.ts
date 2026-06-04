@@ -18,14 +18,12 @@ if (wasm) {
 }
 
 export type WhisperModel = 'Xenova/whisper-base' | 'Xenova/whisper-tiny';
-export type WhisperTask = 'transcribe' | 'translate';
 
 interface RunMessage {
   type: 'run';
   audio: Float32Array;
   model: WhisperModel;
-  task: WhisperTask;
-  language: string | null; // e.g. 'spanish', 'english', or null = auto-detect
+  language: string; // source language of the audio, e.g. 'spanish'
 }
 
 type IncomingMessage = RunMessage;
@@ -57,20 +55,20 @@ self.addEventListener('message', async (event: MessageEvent<IncomingMessage>) =>
     self.postMessage({ type: 'status', status: 'loading-model' });
     const transcriber = await getPipeline(msg.model);
 
+    // Pass 1 — transcript in the source language, word-level timestamps.
     self.postMessage({ type: 'status', status: 'transcribing' });
-    const output: any = await transcriber(msg.audio, {
-      language: msg.language ?? undefined,
-      task: msg.task,
+    const txOutput: any = await transcriber(msg.audio, {
+      language: msg.language,
+      task: 'transcribe',
       return_timestamps: 'word',
       chunk_length_s: 30,
       stride_length_s: 5,
     });
 
-    // output.chunks: [{ text, timestamp: [start, end] }]
-    const chunks: Array<{ text: string; timestamp: [number, number | null] }> =
-      output?.chunks ?? [];
-
-    const words = chunks
+    // txOutput.chunks: [{ text, timestamp: [start, end] }]
+    const txChunks: Array<{ text: string; timestamp: [number, number | null] }> =
+      txOutput?.chunks ?? [];
+    const words = txChunks
       .filter((c) => c.text && c.text.trim().length > 0)
       .map((c, idx) => ({
         id: `word-${idx}`,
@@ -79,7 +77,35 @@ self.addEventListener('message', async (event: MessageEvent<IncomingMessage>) =>
         end: c.timestamp?.[1] ?? c.timestamp?.[0] ?? 0,
       }));
 
-    self.postMessage({ type: 'result', words, text: output?.text ?? '' });
+    // Pass 2 — English translation, segment-level timestamps. Reuses the same
+    // already-loaded model: no extra download, no extra storage. Whisper's
+    // built-in translate task always targets English.
+    self.postMessage({ type: 'status', status: 'translating' });
+    const trOutput: any = await transcriber(msg.audio, {
+      language: msg.language,
+      task: 'translate',
+      return_timestamps: true,
+      chunk_length_s: 30,
+      stride_length_s: 5,
+    });
+
+    const trChunks: Array<{ text: string; timestamp: [number, number | null] }> =
+      trOutput?.chunks ?? [];
+    const segments = trChunks
+      .filter((c) => c.text && c.text.trim().length > 0)
+      .map((c, idx) => ({
+        id: `seg-${idx}`,
+        text: c.text.trim(),
+        start: c.timestamp?.[0] ?? 0,
+        end: c.timestamp?.[1] ?? c.timestamp?.[0] ?? 0,
+      }));
+
+    self.postMessage({
+      type: 'result',
+      words,
+      text: txOutput?.text ?? '',
+      translation: { segments, text: (trOutput?.text ?? '').trim() },
+    });
   } catch (err: any) {
     self.postMessage({ type: 'error', message: err?.message ?? String(err) });
   }
