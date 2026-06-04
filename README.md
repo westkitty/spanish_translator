@@ -1,91 +1,85 @@
-# Offline Cross-Platform English-Spanish Translator
+# Spanish Whisper Engine — On-Device Audio Transcription
 
-A standalone, fully offline English ↔ Spanish translation application optimized for mobile viewports. The system runs completely client-side without relying on external servers, backend APIs, or remote translation services after the initial load.
+A fully **offline, on-device** Spanish audio transcription app. Pick an audio file,
+and Whisper runs **inside the app** (no server, no API, no uploads) to produce a
+word-timestamped transcript you can scrub, edit, and export. Optionally translate
+Spanish audio straight to English.
 
-## 🚀 Key Features
+## How it works
 
-*   **Offline-First Inference:** Runs machine translation models locally in the client using **Transformers.js** (ONNX Runtime WebAssembly).
-*   **Smooth Mobile UI (60 FPS):** Model inference executes inside a background **Web Worker** to prevent blocking the main rendering thread.
-*   **Quantized Model Footprint:** Uses 8-bit quantized models (`Xenova/opus-mt-en-es` and `Xenova/opus-mt-es-en`), keeping the load weight under 75MB.
-*   **IndexedDB Caching:** Once downloaded on first launch, model files are permanently cached inside the device's IndexedDB, operating fully offline thereafter.
-*   **Native Cross-Platform wrappers:** Integrated with **Capacitor 6** to target native iOS and Android environments.
+- **On-device Whisper** via [Transformers.js](https://github.com/huggingface/transformers.js)
+  (ONNX Runtime / WebAssembly). The audio never leaves the device.
+- **No backend.** There is no server to run. The previous FastAPI/mock backend has
+  been removed entirely — all inference happens in the WebView.
+- **Audio pipeline:** the file is decoded to 16 kHz mono PCM with the Web Audio API,
+  then transcribed in a Web Worker so the UI stays responsive.
+- **Offline after first run:** the model (~45–85 MB) downloads once from the Hugging
+  Face hub and is cached in the browser Cache API. The ONNX runtime itself is bundled
+  in the app. After the first transcription, no network is ever needed.
 
----
+## Models & footprint
 
-## 🛠️ System Configurations for WebAssembly over Native Containers
+| Mode | Model | On-device size |
+|------|-------|----------------|
+| Spanish transcript / English translation | `Xenova/whisper-base` (default) | ~85 MB |
+| Faster / low-end fallback | `Xenova/whisper-tiny` | ~45 MB |
 
-Running WebAssembly and local model caching inside native mobile containers (like Capacitor Webviews) requires strict origin controls and security parameters. This project applies the following non-negotiable setups:
+Total installed footprint is roughly **~100 MB** (app + ONNX runtime + base model).
 
-1.  **Origin Schema Isolation:** In `capacitor.config.json`, the standard local webview scheme is routed over `https://localhost`. This satisfies modern secure-context specifications, enabling **WebAssembly memory allocations** and **IndexedDB** caching inside native wrappers.
-2.  **ONNX WASM Binary Locator:** Capacitor webviews cannot resolve standard dynamic path mappings for ONNX runtime WebAssembly binaries. We explicitly anchor the configuration paths (`env.backends.onnx.wasm.wasmPaths`) inside `src/workers/translator.worker.ts` to fetch runtime binary modules from a secure CDN fallback if local system mappings fail.
-3.  **CORS Header Optimization:** Vite dev server is configured with strict Cross-Origin-Opener-Policy (`same-origin`) and Cross-Origin-Embedder-Policy (`require-corp`) headers to support SharedArrayBuffer allocations.
+- **Spanish transcript:** `task: transcribe`, language Spanish → word-level Spanish text.
+- **English translation:** `task: translate` → Whisper translates Spanish audio to
+  English (still word-timestamped). No extra model required.
 
----
+## Project structure
 
-## 💻 Getting Started (Web & Development)
+```
+frontend/
+├── src/
+│   ├── App.tsx                       # UI: file pick → transcribe → edit → export
+│   ├── lib/
+│   │   ├── audio.ts                  # File → 16 kHz mono PCM (Web Audio API)
+│   │   └── transcriber.worker.ts     # Whisper inference Web Worker (Transformers.js)
+│   ├── hooks/
+│   │   ├── useTranscriber.ts         # Decode + worker orchestration + progress
+│   │   └── useAudioPlayer.ts         # Playback synced to the timeline
+│   └── components/
+│       ├── AudioCanvas.tsx           # Waveform / scrub timeline
+│       ├── CaptionEditor.tsx         # Virtualized word editor
+│       └── CaptionExport.tsx         # TXT / timed-JSON / clipboard export
+├── android/                          # Capacitor Android project
+└── capacitor.config.ts
+```
 
-### Prerequisites
+## Getting started (web / development)
 
-*   Node.js (v18+)
-*   NPM
+```bash
+cd frontend
+npm install
+npm run dev      # http://localhost:3000
+```
 
-### Installation & Run
+Build the production web assets:
 
-1.  Clone the repository and install dependencies:
-    ```bash
-    npm install
-    ```
+```bash
+npm run build    # outputs to frontend/dist
+```
 
-2.  Run the application in local development mode:
-    ```bash
-    npm run dev
-    ```
-    Open `http://localhost:5173/` in your browser.
+## Android build
 
-3.  Build the production web assets:
-    ```bash
-    npm run build
-    ```
-    This compiles assets into the `/dist` directory, which Capacitor uses to bundle the native mobile applications.
+```bash
+cd frontend
+npm run build
+npx cap sync android
+cd android && ./gradlew assembleRelease
+# → app/build/outputs/apk/release/app-release.apk
+```
 
----
+> **Note:** `npx cap sync` regenerates `android/app/capacitor.build.gradle` targeting
+> Java 21. If you build with JDK 17, reset its `sourceCompatibility`/`targetCompatibility`
+> to `VERSION_17` before `assembleRelease`.
 
-## 📱 Mobile Platform Compilation
+## First-run requirement
 
-### 🤖 Android Setup & Build
-
-1.  Synchronize the web build with the Android project:
-    ```bash
-    npx cap sync android
-    ```
-
-2.  Compile the debug APK directly from your terminal:
-    ```bash
-    cd android && ./gradlew assembleDebug
-    ```
-    The compiled package will be located at:  
-    `android/app/build/outputs/apk/debug/app-debug.apk`
-
-3.  Open the project in Android Studio if you want to deploy to a connected device:
-    ```bash
-    npx cap open android
-    ```
-
----
-
-### 🍎 iOS Setup & Build
-
-1.  Verify CocoaPods is installed, then sync the web build:
-    ```bash
-    npx cap sync ios
-    ```
-
-2.  Open the project inside Xcode:
-    ```bash
-    npx cap open ios
-    ```
-
-3.  Inside Xcode:
-    *   Select your target device or simulator.
-    *   Click the **Play/Run** button to compile and install on your device.
-    *   *Note:* If compiling on simulators raises an error stating the SDK runtime is missing, open Xcode, navigate to `Xcode > Settings > Components`, and download the requested platform runtime (e.g., iOS 17/18).
+The very first transcription needs internet **once** to download the Whisper model
+(~85 MB for base). After that the app is fully offline forever. There is no server
+to set up — ever.
