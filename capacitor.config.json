@@ -1,9 +1,0 @@
-{
-  "appId": "com.offlinetranslator.app",
-  "appName": "Offline Spanish Translator",
-  "webDir": "dist",
-  "server": {
-    "androidScheme": "https",
-    "hostname": "localhost"
-  }
-}
