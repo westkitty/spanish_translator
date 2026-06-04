@@ -6,3 +6,4 @@ local.properties
 .idea/
 *.log
 scratch/
+*.keystore
