@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Upload, 
   Play, 
@@ -17,24 +17,21 @@ import { AudioCanvas } from './components/AudioCanvas';
 import { CaptionEditor, CaptionWord } from './components/CaptionEditor';
 import { CaptionExport } from './components/CaptionExport';
 
-// A selection of Spanish phrases for realistic mock transcribing
-const SPANISH_WORDS = [
-  "Bienvenidos", "al", "motor", "de", "transcripción", "en", "español.",
-  "Este", "sistema", "funciona", "completamente", "fuera", "de", "línea", "para", "proteger", "sus", "datos.",
-  "El", "procesamiento", "se", "realiza", "mediante", "bloques", "de", "audio", "de", "cinco", "megabytes.",
-  "El", "reproductor", "sincroniza", "la", "línea", "de", "tiempo", "con", "el", "lienzo", "de", "dibujo.",
-  "Puede", "editar", "cualquier", "palabra", "haciendo", "clic", "sobre", "ella", "en", "el", "editor.",
-  "Exportar", "la", "transcripción", "es", "sencillo", "utilizando", "los", "formatos", "de", "texto", "y", "json.",
-  "Esperamos", "que", "esta", "aplicación", "optimice", "su", "flujo", "de", "trabajo", "diario."
-];
-
 export default function App() {
   const [captions, setCaptions] = useState<CaptionWord[]>([]);
   const [transcribing, setTranscribing] = useState(false);
   const [transcriptionDone, setTranscriptionDone] = useState(false);
+  
+  const [jobStatus, setJobStatus] = useState<string>('idle');
+  const [serverLogs, setServerLogs] = useState<string>('');
+  const [backendProgress, setBackendProgress] = useState<number>(0);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const pollingIntervalRef = useRef<number | null>(null);
 
   // Hook 1: Uploader
   const {
+    uploadId,
     currentFile,
     isUploading,
     progress: uploadProgress,
@@ -45,8 +42,8 @@ export default function App() {
     resumeUpload,
     resetUploader,
   } = useChunkUploader({
-    chunkSize: 5 * 1024 * 1024, // 5MB
-    uploadEndpoint: '/api/upload-chunk' // matches backend endpoint
+    chunkSize: 2 * 1024 * 1024, // Fixed 2MB chunks client-side for performance
+    uploadEndpoint: '/api/upload-chunk'
   });
 
   // Hook 2: Audio Player
@@ -60,70 +57,136 @@ export default function App() {
     seek,
   } = useAudioPlayer();
 
+  // Clear polling timers safely on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+    };
+  }, []);
+
   // Handle local file selection
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const file = e.target.files[0];
       setFile(file);
       setTranscriptionDone(false);
+      setTranscribing(false);
       setCaptions([]);
+      setJobStatus('idle');
+      setServerLogs('');
+      setBackendProgress(0);
+      setErrorMsg(null);
     }
   };
 
-  // Generate realistic captions when upload finishes
-  useEffect(() => {
-    if (uploadProgress === 100 && currentFile && !transcribing && !transcriptionDone) {
-      setTranscribing(true);
-
-      // Create local object URL so the player can play the local file without round-trips
-      const audioUrl = URL.createObjectURL(currentFile);
-      setSrc(audioUrl);
-
-      // Simulate a small AI transcription delay
-      const timer = setTimeout(() => {
-        // We will read the audio duration once it loads, or make a mock duration based on file size
-        // (1MB of standard audio is roughly 1 minute of 128kbps mp3)
-        const estimatedDuration = Math.max(15, (currentFile.size / 16000));
-        const words: CaptionWord[] = [];
+  const startPolling = (jobId: string) => {
+    if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+    
+    pollingIntervalRef.current = window.setInterval(async () => {
+      try {
+        const res = await fetch(`/api/jobs/${jobId}`);
+        if (!res.ok) throw new Error("Failed to query background engine state");
         
-        // Generate words spread across the estimated duration
-        let currentTimeCursor = 0.5;
-        let wordIndex = 0;
+        const data = await res.json();
+        setJobStatus(data.status);
+        
+        if (data.status === 'processing') {
+          setServerLogs("FFmpeg execution active... Downsampling audio layers to 16kHz Mono PCM.");
+          setBackendProgress(60);
+        } else if (data.status === 'queued') {
+          setServerLogs("Job is queued in background thread pool executor.");
+          setBackendProgress(30);
+        } else if (data.status === 'failed') {
+          setServerLogs(`Pipeline execution abort: ${data.error}`);
+          setErrorMsg(data.error || 'Internal engine error during translation.');
+          setTranscribing(false);
+          if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+        } else if (data.status === 'completed') {
+          setServerLogs("Inference sequence complete. Injecting transcript segments into local state.");
+          setBackendProgress(100);
+          if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+          fetchFinalTranscript(jobId);
+        }
+      } catch (err: any) {
+        setServerLogs(`Polling link disconnect: ${err.message}`);
+      }
+    }, 1500);
+  };
 
-        while (currentTimeCursor < estimatedDuration - 1 && wordIndex < 100) {
-          const text = SPANISH_WORDS[wordIndex % SPANISH_WORDS.length];
-          const wordLen = text.length;
-          // Allocate 0.2s - 0.5s per word depending on length
-          const wordDuration = Math.max(0.18, Math.min(0.5, wordLen * 0.05));
-          const start = currentTimeCursor;
-          const end = start + wordDuration;
-
-          words.push({
-            id: `word-${wordIndex}`,
-            text,
-            start,
-            end,
-          });
-
-          // advance cursor with slight spacing
-          currentTimeCursor = end + (Math.random() * 0.15 + 0.05);
-          wordIndex++;
+  const fetchFinalTranscript = async (jobId: string) => {
+    try {
+      const res = await fetch(`/api/jobs/${jobId}/export?format=json`);
+      if (res.ok) {
+        const data = await res.json();
+        
+        // Load local file to player for immediate playback scrubbing
+        if (currentFile) {
+          const audioUrl = URL.createObjectURL(currentFile);
+          setSrc(audioUrl);
         }
 
-        setCaptions(words);
+        const mappedWords: CaptionWord[] = data.transcript.map((w: any, idx: number) => ({
+          id: `word-${idx}`,
+          text: w.word,
+          start: w.start,
+          end: w.end,
+        }));
+        
+        setCaptions(mappedWords);
         setTranscribing(false);
         setTranscriptionDone(true);
-      }, 2000);
-
-      return () => clearTimeout(timer);
+      } else {
+        throw new Error("Export returned non-200 response");
+      }
+    } catch (err: any) {
+      setServerLogs(`Data retrieval exception: ${err.message}`);
+      setErrorMsg(err.message);
+      setTranscribing(false);
     }
-  }, [uploadProgress, currentFile, transcribing, transcriptionDone, setSrc]);
+  };
 
-  // Update a word in captions array
-  const handleUpdateWord = (id: string, newText: string) => {
-    setCaptions((prev) =>
-      prev.map((w) => (w.id === id ? { ...w, text: newText } : w))
-    );
+  // Trigger processing when upload finishes
+  useEffect(() => {
+    if (uploadProgress === 100 && uploadId && currentFile && !transcribing && !transcriptionDone && jobStatus === 'idle') {
+      const triggerProcessing = async () => {
+        setTranscribing(true);
+        setJobStatus('queued');
+        setServerLogs("All bytes safely appended to target file. Triggering pipeline process execution request...");
+        try {
+          const processRes = await fetch(`/api/jobs/${uploadId}/process`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ uploadId })
+          });
+          
+          if (!processRes.ok) throw new Error("Processing handoff request rejected.");
+          
+          startPolling(uploadId);
+        } catch (err: any) {
+          setJobStatus('failed');
+          setServerLogs(`Execution init failure: ${err.message}`);
+          setErrorMsg(err.message);
+          setTranscribing(false);
+        }
+      };
+      
+      triggerProcessing();
+    }
+  }, [uploadProgress, uploadId, currentFile, transcribing, transcriptionDone, jobStatus]);
+
+  const handleReset = () => {
+    resetUploader();
+    setTranscriptionDone(false);
+    setTranscribing(false);
+    setCaptions([]);
+    setJobStatus('idle');
+    setServerLogs('');
+    setBackendProgress(0);
+    setErrorMsg(null);
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
   };
 
   // Human-readable size converter
@@ -152,7 +215,7 @@ export default function App() {
           </div>
           <div>
             <h1 className="text-sm md:text-base font-extrabold tracking-wide uppercase bg-gradient-to-r from-indigo-400 to-pink-500 bg-clip-text text-transparent">
-              Spanish Transcription Engine
+              Spanish Ingestion Engine
             </h1>
             <p className="text-[10px] text-slate-500 font-medium">Mobile-First Transcript Engine</p>
           </div>
@@ -191,7 +254,7 @@ export default function App() {
                   </div>
                 </div>
                 <button
-                  onClick={resetUploader}
+                  onClick={handleReset}
                   className="text-[10px] font-semibold text-rose-400 hover:text-rose-300 transition-colors p-1"
                 >
                   Remove
@@ -218,13 +281,13 @@ export default function App() {
                 </div>
               )}
 
-              {/* Upload errors */}
-              {uploadError && (
+              {/* Upload or backend errors */}
+              {(uploadError || errorMsg) && (
                 <div className="bg-rose-950/60 border border-rose-800/60 rounded-lg p-2.5 flex items-start gap-2 text-[11px] text-rose-300">
                   <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
                   <div>
-                    <p className="font-semibold">Upload failed</p>
-                    <p className="text-[10px] text-rose-400/80 mt-0.5">{uploadError}</p>
+                    <p className="font-semibold">Pipeline failure event</p>
+                    <p className="text-[10px] text-rose-400/80 mt-0.5">{uploadError || errorMsg}</p>
                   </div>
                 </div>
               )}
@@ -233,12 +296,12 @@ export default function App() {
               <div className="space-y-2">
                 {isUploading && (
                   <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono">
-                    <span>Uploading 5MB blocks...</span>
+                    <span>Uploading 2MB blocks...</span>
                     <span>{uploadProgress}%</span>
                   </div>
                 )}
                 
-                {uploadProgress > 0 && (
+                {uploadProgress > 0 && !transcribing && !transcriptionDone && (
                   <div className="w-full bg-slate-950 rounded-full h-2.5 overflow-hidden border border-slate-800">
                     <div
                       className="bg-gradient-to-r from-indigo-500 to-pink-500 h-full transition-all duration-300"
@@ -268,16 +331,28 @@ export default function App() {
 
         {/* Engine Pipeline Status */}
         {transcribing && (
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-lg flex flex-col items-center justify-center text-center py-8">
-            <RefreshCw className="w-8 h-8 text-indigo-400 animate-spin mb-3" />
-            <h3 className="text-xs font-semibold text-slate-200">Local AI Transcribing...</h3>
-            <p className="text-[10px] text-slate-500 mt-1 max-w-[200px]">
-              Extracting voice prints and aligning timestamps sequentially.
-            </p>
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg flex flex-col items-center justify-center text-center py-8 space-y-4">
+            <RefreshCw className="w-8 h-8 text-indigo-400 animate-spin" />
+            <div>
+              <h3 className="text-sm font-semibold text-slate-200 uppercase tracking-wide">
+                Pipeline Phase: <span className="text-indigo-400">{jobStatus}</span>
+              </h3>
+              <p className="text-xs text-slate-400 mt-1 font-mono">{serverLogs}</p>
+            </div>
+            
+            <div className="w-full max-w-md bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
+              <div
+                className="bg-gradient-to-r from-indigo-500 to-pink-500 h-full transition-all duration-300"
+                style={{ width: `${backendProgress}%` }}
+              />
+            </div>
+            <div className="text-[10px] text-slate-500 font-mono">
+              Processing: {backendProgress}%
+            </div>
           </div>
         )}
 
-        {/* Player controls, Canvas, and Editor (Active post-upload) */}
+        {/* Player controls, Canvas, and Editor (Active post-upload & process completion) */}
         {transcriptionDone && !transcribing && (
           <>
             {/* Visualizer and Scrub controls */}
@@ -323,7 +398,11 @@ export default function App() {
             <CaptionEditor
               captions={captions}
               currentTime={currentTime}
-              onUpdateWord={handleUpdateWord}
+              onUpdateWord={(id, newText) => {
+                setCaptions((prev) =>
+                  prev.map((w) => (w.id === id ? { ...w, text: newText } : w))
+                );
+              }}
               onPause={pause}
               onSeek={seek}
             />
@@ -339,7 +418,7 @@ export default function App() {
 
       {/* Info footer */}
       <footer className="text-[10px] text-slate-600 text-center py-1.5 border-t border-slate-900 mt-auto flex items-center justify-center gap-1 font-mono">
-        <Info className="w-3 h-3 text-slate-500" /> Spanish Audio Transcription Engine &bull; Touch Optimized
+        <Info className="w-3 h-3 text-slate-500" /> Spanish Audio Ingestion Engine &bull; Touch Optimized
       </footer>
     </div>
   );

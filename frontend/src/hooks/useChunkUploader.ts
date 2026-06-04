@@ -21,6 +21,7 @@ export function useChunkUploader(options: UseChunkUploaderOptions = {}) {
     uploadEndpoint = '/api/upload-chunk',
   } = options;
 
+  const [uploadId, setUploadId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +50,7 @@ export function useChunkUploader(options: UseChunkUploaderOptions = {}) {
     setCurrentFile(file);
     setError(null);
     setProgress(0);
+    setUploadId(null);
     const resumeState = checkResumeState(file);
     if (resumeState) {
       setPendingResume(resumeState);
@@ -113,7 +115,7 @@ export function useChunkUploader(options: UseChunkUploaderOptions = {}) {
       uploadState = resumeState;
     } else {
       uploadState = {
-        uploadId: crypto.randomUUID(),
+        uploadId: "job_" + Math.random().toString(36).substring(2, 15),
         nextChunkIndex: 0,
         totalChunks,
         fileName: file.name,
@@ -122,6 +124,7 @@ export function useChunkUploader(options: UseChunkUploaderOptions = {}) {
       localStorage.setItem(resumeKey, JSON.stringify(uploadState));
     }
 
+    setUploadId(uploadState.uploadId);
     setPendingResume(null);
 
     try {
@@ -187,6 +190,7 @@ export function useChunkUploader(options: UseChunkUploaderOptions = {}) {
     setCurrentFile(null);
     setProgress(0);
     setError(null);
+    setUploadId(null);
     setPendingResume(null);
   }, [currentFile, cancelUpload]);
 
@@ -200,6 +204,7 @@ export function useChunkUploader(options: UseChunkUploaderOptions = {}) {
   }, []);
 
   return {
+    uploadId,
     currentFile,
     isUploading,
     progress,
