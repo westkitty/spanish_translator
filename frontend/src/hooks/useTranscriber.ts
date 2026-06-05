@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { decodeAudioFile } from '../lib/audio';
 import { EtaEstimator } from '../lib/eta';
+import { replaceTimedRange, type TimedRange } from '../lib/timeline';
 import type { CaptionWord } from '../components/CaptionEditor';
 import type { WhisperModel } from '../lib/transcriber.worker';
 
@@ -43,10 +44,23 @@ export interface RunOptions {
   highAccuracy?: boolean;
 }
 
+interface CachedAudio {
+  file: File;
+  samples: Float32Array;
+}
+
+type RunMode =
+  | { kind: 'full' }
+  | { kind: 'region'; range: TimedRange };
+
 export function useTranscriber() {
   const workerRef = useRef<Worker | null>(null);
   const etaRef = useRef<EtaEstimator | null>(null);
   const handlerRef = useRef<((e: MessageEvent<any>) => void) | null>(null);
+  const cachedAudioRef = useRef<CachedAudio | null>(null);
+  const captionsRef = useRef<CaptionWord[]>([]);
+  const translationRef = useRef<Translation | null>(null);
+  const activeModeRef = useRef<RunMode>({ kind: 'full' });
 
   const [status, setStatus] = useState<TranscriberStatus>('idle');
   const [modelFiles, setModelFiles] = useState<Record<string, ModelFileProgress>>({});
@@ -54,6 +68,14 @@ export function useTranscriber() {
   const [translation, setTranslation] = useState<Translation | null>(null);
   const [progress, setProgress] = useState<RunProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    captionsRef.current = captions;
+  }, [captions]);
+
+  useEffect(() => {
+    translationRef.current = translation;
+  }, [translation]);
 
   const getWorker = useCallback((): Worker => {
     if (!workerRef.current) {
@@ -79,28 +101,25 @@ export function useTranscriber() {
     handlerRef.current = null;
   }, []);
 
-  const run = useCallback(
-    async (file: File, opts: RunOptions) => {
-      setError(null);
-      setCaptions([]);
-      setTranslation(null);
-      setModelFiles({});
-      setProgress(null);
-      etaRef.current = null;
+  const decodeForRun = useCallback(async (file: File): Promise<Float32Array> => {
+    const cached = cachedAudioRef.current;
 
-      let samples: Float32Array;
-      try {
-        setStatus('decoding');
-        const decoded = await decodeAudioFile(file);
-        samples = decoded.samples;
-      } catch (err: any) {
-        setStatus('error');
-        setError(`That file wouldn't open — try an MP3, WAV, M4A, or OGG. (${err?.message ?? err})`);
-        return;
-      }
+    if (cached?.file === file) {
+      return cached.samples;
+    }
 
+    setStatus('decoding');
+    const decoded = await decodeAudioFile(file);
+    const samples = decoded.samples.slice();
+    cachedAudioRef.current = { file, samples };
+    return samples;
+  }, []);
+
+  const postRun = useCallback(
+    (samples: Float32Array, opts: RunOptions, mode: RunMode, offsetSec: number) => {
       const worker = getWorker();
       detach();
+      activeModeRef.current = mode;
 
       const handle = (event: MessageEvent<any>) => {
         const msg = event.data;
@@ -137,21 +156,47 @@ export function useTranscriber() {
             }
             break;
           }
-          case 'result':
-            setCaptions(msg.words as CaptionWord[]);
-            setTranslation((msg.translation as Translation) ?? null);
+          case 'result': {
+            const words = msg.words as CaptionWord[];
+            const nextTranslation = (msg.translation as Translation) ?? null;
+
+            if (activeModeRef.current.kind === 'region') {
+              const range = activeModeRef.current.range;
+              const mergedWords = replaceTimedRange(captionsRef.current, words, range, 'word');
+              const currentTranslation = translationRef.current;
+              const mergedSegments = replaceTimedRange(
+                currentTranslation?.segments ?? [],
+                nextTranslation?.segments ?? [],
+                range,
+                'seg'
+              );
+              setCaptions(mergedWords);
+              setTranslation(
+                currentTranslation || nextTranslation
+                  ? {
+                      segments: mergedSegments,
+                      text: mergedSegments.map((segment) => segment.text).join(' '),
+                    }
+                  : null
+              );
+            } else {
+              setCaptions(words);
+              setTranslation(nextTranslation);
+            }
+
             setProgress({ fraction: 1, etaMs: 0, elapsedMs: etaRef.current?.elapsedMs() ?? 0 });
             setStatus('done');
             detach();
             break;
+          }
           case 'cancelled':
-            setStatus('idle');
+            setStatus(activeModeRef.current.kind === 'region' ? 'done' : 'idle');
             setProgress(null);
             detach();
             break;
           case 'error':
             setError(msg.message);
-            setStatus('error');
+            setStatus(activeModeRef.current.kind === 'region' ? 'done' : 'error');
             detach();
             break;
         }
@@ -160,7 +205,6 @@ export function useTranscriber() {
       handlerRef.current = handle;
       worker.addEventListener('message', handle);
 
-      // Transfer the PCM buffer to avoid a copy (re-runs re-decode from the file).
       worker.postMessage(
         {
           type: 'run',
@@ -169,11 +213,61 @@ export function useTranscriber() {
           language: opts.language ?? 'spanish',
           prompt: opts.prompt,
           highAccuracy: opts.highAccuracy,
+          offsetSec,
         },
         [samples.buffer]
       );
     },
-    [getWorker, detach]
+    [detach, getWorker]
+  );
+
+  const run = useCallback(
+    async (file: File, opts: RunOptions) => {
+      setError(null);
+      setCaptions([]);
+      setTranslation(null);
+      setModelFiles({});
+      setProgress(null);
+      etaRef.current = null;
+
+      try {
+        const samples = await decodeForRun(file);
+        postRun(samples.slice(), opts, { kind: 'full' }, 0);
+      } catch (err: any) {
+        setStatus('error');
+        setError(`That file wouldn't open — try an MP3, WAV, M4A, or OGG. (${err?.message ?? err})`);
+      }
+    },
+    [decodeForRun, postRun]
+  );
+
+  const runRegion = useCallback(
+    async (file: File, range: TimedRange, opts: RunOptions) => {
+      setError(null);
+      setModelFiles({});
+      setProgress(null);
+      etaRef.current = null;
+
+      try {
+        const samples = await decodeForRun(file);
+        const startSec = Math.max(0, Math.min(range.start, range.end));
+        const endSec = Math.max(startSec, Math.max(range.start, range.end));
+        const startSample = Math.floor(startSec * 16000);
+        const endSample = Math.min(samples.length, Math.ceil(endSec * 16000));
+
+        if (endSample <= startSample) {
+          setError('Select a longer region before re-running it.');
+          setStatus('done');
+          return;
+        }
+
+        postRun(samples.slice(startSample, endSample), opts, { kind: 'region', range: { start: startSec, end: endSec } }, startSec);
+      } catch (err: any) {
+        setStatus('done');
+        setError(`That region couldn't be prepared. (${err?.message ?? err})`);
+      }
+    },
+    [decodeForRun, postRun]
   );
 
   const cancel = useCallback(() => {
@@ -199,5 +293,23 @@ export function useTranscriber() {
     etaRef.current = null;
   }, []);
 
-  return { status, modelFiles, captions, translation, progress, error, run, cancel, loadResult, reset, setCaptions };
+  const clearDecodedAudio = useCallback(() => {
+    cachedAudioRef.current = null;
+  }, []);
+
+  return {
+    status,
+    modelFiles,
+    captions,
+    translation,
+    progress,
+    error,
+    run,
+    runRegion,
+    cancel,
+    loadResult,
+    reset,
+    clearDecodedAudio,
+    setCaptions,
+  };
 }

@@ -4,14 +4,26 @@ interface AudioCanvasProps {
   duration: number;
   currentTime: number;
   isPlaying: boolean;
+  selection?: { start: number; end: number } | null;
+  selectionMode?: boolean;
   onSeek: (time: number) => void;
+  onSelectRange?: (range: { start: number; end: number }) => void;
 }
 
-export function AudioCanvas({ duration, currentTime, isPlaying, onSeek }: AudioCanvasProps) {
+export function AudioCanvas({
+  duration,
+  currentTime,
+  isPlaying,
+  selection = null,
+  selectionMode = false,
+  onSeek,
+  onSelectRange,
+}: AudioCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animationFrameId = useRef<number | null>(null);
   const phaseRef = useRef(0);
   const [isScrubbing, setIsScrubbing] = useState(false);
+  const [draftSelection, setDraftSelection] = useState<{ start: number; end: number } | null>(null);
 
   // Generate a deterministic waveform shape
   const [amplitudes] = useState(() => {
@@ -27,56 +39,62 @@ export function AudioCanvas({ duration, currentTime, isPlaying, onSeek }: AudioC
     return arr;
   });
 
-  const handleTouch = (clientX: number) => {
+  const timeFromClientX = (clientX: number) => {
     const canvas = canvasRef.current;
-    if (!canvas || duration <= 0) return;
+    if (!canvas || duration <= 0) return 0;
 
     const rect = canvas.getBoundingClientRect();
     const touchX = clientX - rect.left;
     const progress = Math.max(0, Math.min(touchX / rect.width, 1));
-    onSeek(progress * duration);
+    return progress * duration;
   };
 
-  const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (duration <= 0) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
     setIsScrubbing(true);
-    if (e.touches.length > 0) {
-      handleTouch(e.touches[0].clientX);
+
+    const time = timeFromClientX(e.clientX);
+    if (selectionMode) {
+      setDraftSelection({ start: time, end: time });
+    } else {
+      onSeek(time);
     }
   };
 
-  const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
-    if (e.touches.length > 0) {
-      handleTouch(e.touches[0].clientX);
+  const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!isScrubbing || duration <= 0) return;
+
+    const time = timeFromClientX(e.clientX);
+    if (selectionMode) {
+      setDraftSelection((current) => (current ? { ...current, end: time } : { start: time, end: time }));
+    } else {
+      onSeek(time);
     }
   };
 
-  const handleTouchEnd = () => {
+  const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (selectionMode && draftSelection) {
+      const start = Math.min(draftSelection.start, draftSelection.end);
+      const end = Math.max(draftSelection.start, draftSelection.end);
+      if (end - start >= 0.5) {
+        onSelectRange?.({ start, end });
+      } else {
+        onSeek(start);
+      }
+    }
+
     setIsScrubbing(false);
-  };
-
-  // Mouse fallback for local testing
-  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    setIsScrubbing(true);
-    handleTouch(e.clientX);
-  };
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (isScrubbing) {
-      handleTouch(e.clientX);
+    setDraftSelection(null);
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
     }
   };
 
-  const handleMouseUp = () => {
+  const handlePointerCancel = () => {
     setIsScrubbing(false);
+    setDraftSelection(null);
   };
-
-  useEffect(() => {
-    const handleGlobalMouseUp = () => setIsScrubbing(false);
-    window.addEventListener('mouseup', handleGlobalMouseUp);
-    return () => {
-      window.removeEventListener('mouseup', handleGlobalMouseUp);
-    };
-  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -91,7 +109,7 @@ export function AudioCanvas({ duration, currentTime, isPlaying, onSeek }: AudioC
       const dpr = window.devicePixelRatio || 1;
       canvas.width = rect.width * dpr;
       canvas.height = rect.height * dpr;
-      ctx.scale(dpr, dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
 
     resizeCanvas();
@@ -119,6 +137,18 @@ export function AudioCanvas({ duration, currentTime, isPlaying, onSeek }: AudioC
       // Compute progress
       const progress = duration > 0 ? currentTime / duration : 0;
       const playheadX = progress * w;
+      const activeSelection = draftSelection ?? selection;
+      if (activeSelection && duration > 0) {
+        const selectionStart = Math.min(activeSelection.start, activeSelection.end);
+        const selectionEnd = Math.max(activeSelection.start, activeSelection.end);
+        const startX = (selectionStart / duration) * w;
+        const endX = (selectionEnd / duration) * w;
+        ctx.fillStyle = 'rgba(251, 191, 36, 0.18)';
+        ctx.fillRect(startX, 0, Math.max(2, endX - startX), h);
+        ctx.strokeStyle = 'rgba(252, 211, 77, 0.75)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(startX, 0.5, Math.max(2, endX - startX), h - 1);
+      }
 
       // 2. Draw vertical waveform bars
       const numBars = amplitudes.length;
@@ -213,19 +243,17 @@ export function AudioCanvas({ duration, currentTime, isPlaying, onSeek }: AudioC
         cancelAnimationFrame(animationFrameId.current);
       }
     };
-  }, [amplitudes, currentTime, duration, isPlaying, isScrubbing]);
+  }, [amplitudes, currentTime, draftSelection, duration, isPlaying, isScrubbing, selection]);
 
   return (
     <div className="relative w-full h-24 rounded-xl overflow-hidden border border-slate-800 shadow-lg">
       <canvas
         ref={canvasRef}
         className="w-full h-full block cursor-pointer touch-none"
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
       />
       {duration <= 0 && (
         <div className="absolute inset-0 bg-slate-900/80 flex items-center justify-center pointer-events-none select-none">

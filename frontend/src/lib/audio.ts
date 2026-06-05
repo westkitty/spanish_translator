@@ -38,3 +38,50 @@ export async function decodeAudioFile(file: File): Promise<DecodedAudio> {
     duration: decoded.duration,
   };
 }
+
+function writeAscii(view: DataView, offset: number, value: string): void {
+  for (let i = 0; i < value.length; i++) {
+    view.setUint8(offset + i, value.charCodeAt(i));
+  }
+}
+
+export function encodeWav(pcm: Float32Array, sampleRate = WHISPER_SAMPLE_RATE): Blob {
+  const bytesPerSample = 2;
+  const dataSize = pcm.length * bytesPerSample;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  writeAscii(view, 0, 'RIFF');
+  view.setUint32(4, 36 + dataSize, true);
+  writeAscii(view, 8, 'WAVE');
+  writeAscii(view, 12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * bytesPerSample, true);
+  view.setUint16(32, bytesPerSample, true);
+  view.setUint16(34, 8 * bytesPerSample, true);
+  writeAscii(view, 36, 'data');
+  view.setUint32(40, dataSize, true);
+
+  let offset = 44;
+  for (let i = 0; i < pcm.length; i++) {
+    const sample = Math.max(-1, Math.min(1, pcm[i]));
+    view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+    offset += bytesPerSample;
+  }
+
+  return new Blob([buffer], { type: 'audio/wav' });
+}
+
+export async function extractWavClip(file: File, startSec: number, endSec: number): Promise<Blob> {
+  const decoded = await decodeAudioFile(file);
+  const startSample = Math.max(0, Math.floor(Math.min(startSec, endSec) * WHISPER_SAMPLE_RATE));
+  const endSample = Math.min(
+    decoded.samples.length,
+    Math.ceil(Math.max(startSec, endSec) * WHISPER_SAMPLE_RATE)
+  );
+
+  return encodeWav(decoded.samples.slice(startSample, endSample), WHISPER_SAMPLE_RATE);
+}

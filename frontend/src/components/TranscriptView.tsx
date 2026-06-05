@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
-import { Type, AlignLeft, Search, Undo2, Redo2, History } from 'lucide-react';
+import { Type, AlignLeft, Search, Undo2, Redo2, History, Download } from 'lucide-react';
 import { CaptionEditor, type CaptionWord } from './CaptionEditor';
-import { buildSentences } from '../lib/punctuation';
+import { buildSentences, type Sentence } from '../lib/punctuation';
+import type { SilenceRange } from '../lib/vad';
 
 interface TranscriptViewProps {
   captions: CaptionWord[];
@@ -16,6 +17,8 @@ interface TranscriptViewProps {
   canUndo: boolean;
   canRedo: boolean;
   canRevert: boolean;
+  silences?: SilenceRange[];
+  onExportClip?: (sentence: Sentence) => void;
 }
 
 export function TranscriptView({
@@ -31,6 +34,8 @@ export function TranscriptView({
   canUndo,
   canRedo,
   canRevert,
+  silences = [],
+  onExportClip,
 }: TranscriptViewProps) {
   const [mode, setMode] = useState<'words' | 'read'>('words');
   const [showFind, setShowFind] = useState(false);
@@ -38,7 +43,7 @@ export function TranscriptView({
   const [replace, setReplace] = useState('');
   const [lastCount, setLastCount] = useState<number | null>(null);
 
-  const sentences = useMemo(() => buildSentences(captions), [captions]);
+  const sentences = useMemo(() => buildSentences(captions, silences), [captions, silences]);
 
   const tabBtn = (active: boolean) =>
     `flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
@@ -126,15 +131,26 @@ export function TranscriptView({
             sentences.map((s) => {
               const active = currentTime >= s.start && currentTime <= s.end;
               return (
-                <p
+                <div
                   key={s.id}
                   onClick={() => onSeek(s.start)}
-                  className={`cursor-pointer px-2.5 py-1.5 rounded-lg text-sm leading-relaxed transition-colors ${
+                  className={`group cursor-pointer px-2.5 py-1.5 rounded-lg text-sm leading-relaxed transition-colors ${
                     active ? 'bg-sky-600/20 text-sky-100 border border-sky-400/30' : 'text-slate-300 hover:bg-white/[0.04] border border-transparent'
                   }`}
                 >
-                  {s.text}
-                </p>
+                  <p>{s.text}</p>
+                  {onExportClip && (
+                    <button
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onExportClip(s);
+                      }}
+                      className="mt-1.5 inline-flex items-center gap-1 text-[10px] text-slate-500 hover:text-sky-200 transition-colors cursor-pointer"
+                    >
+                      <Download className="w-3 h-3" /> Export clip
+                    </button>
+                  )}
+                </div>
               );
             })
           )}

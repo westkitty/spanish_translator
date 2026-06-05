@@ -12,11 +12,14 @@ import {
   Languages,
   HelpCircle,
   Library,
+  Mic,
+  Square,
 } from 'lucide-react';
 import { useRef } from 'react';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { useTranscriber } from './hooks/useTranscriber';
 import { useProjects } from './hooks/useProjects';
+import { useRecorder } from './hooks/useRecorder';
 import { AudioCanvas } from './components/AudioCanvas';
 import { TranscriptView } from './components/TranscriptView';
 import type { CaptionWord } from './components/CaptionEditor';
@@ -27,22 +30,49 @@ import { FaqModal } from './components/FaqModal';
 import { ProgressPanel } from './components/ProgressPanel';
 import { LibraryModal } from './components/LibraryModal';
 import { AdvancedOptions } from './components/AdvancedOptions';
+import type { Sentence } from './lib/punctuation';
 import { newProjectId, type StoredProject } from './lib/db';
+import { decodeAudioFile, extractWavClip } from './lib/audio';
+import { findSilences, type SilenceRange } from './lib/vad';
+import { saveBlobFile, saveTextFile } from './lib/fileSave';
+import { getStoredFlag, setStoredFlag } from './lib/storage';
 import type { WhisperModel } from './lib/transcriber.worker';
+
+const WELCOME_SEEN_KEY = 'spanish-whisper-seen-welcome';
+const RESULT_TIP_SEEN_KEY = 'spanish-whisper-seen-result-tip';
 
 export default function App() {
   const [file, setFile] = useState<File | null>(null);
   const [model, setModel] = useState<WhisperModel>('Xenova/whisper-base');
   const [vocab, setVocab] = useState('');
   const [highAccuracy, setHighAccuracy] = useState(false);
-  const [showWelcome, setShowWelcome] = useState(true);
+  const [showWelcome, setShowWelcome] = useState(() => !getStoredFlag(WELCOME_SEEN_KEY));
+  const [showResultTip, setShowResultTip] = useState(() => !getStoredFlag(RESULT_TIP_SEEN_KEY));
   const [showFaq, setShowFaq] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
+  const [selectRegionMode, setSelectRegionMode] = useState(false);
+  const [selectedRange, setSelectedRange] = useState<{ start: number; end: number } | null>(null);
+  const [inputMode, setInputMode] = useState<'file' | 'record'>('file');
+  const [silences, setSilences] = useState<SilenceRange[]>([]);
 
-  const { status, modelFiles, captions, translation, progress, error, run, cancel, loadResult, reset, setCaptions } =
-    useTranscriber();
+  const {
+    status,
+    modelFiles,
+    captions,
+    translation,
+    progress,
+    error,
+    run,
+    runRegion,
+    cancel,
+    loadResult,
+    reset,
+    clearDecodedAudio,
+    setCaptions,
+  } = useTranscriber();
 
   const { projects, save, open, remove } = useProjects();
+  const recorder = useRecorder();
 
   // Edit history for undo/redo + revert-to-original.
   const [undoStack, setUndoStack] = useState<CaptionWord[][]>([]);
@@ -102,7 +132,12 @@ export default function App() {
     isPlaying,
     currentTime,
     duration,
+    playbackRate,
+    loopRange,
     setSrc,
+    setPlaybackRate,
+    setLoopRange,
+    clearLoopRange,
     pause,
     togglePlay,
     seek,
@@ -124,11 +159,27 @@ export default function App() {
     }
   }, [done, file, setSrc]);
 
+  useEffect(() => {
+    if (!recorder.file) return;
+
+    setFile(recorder.file);
+    projectBaseRef.current = null;
+    setSelectedRange(null);
+    setSelectRegionMode(false);
+    resetHistory();
+    clearDecodedAudio();
+    reset();
+  }, [clearDecodedAudio, recorder.file, reset]);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       setFile(e.target.files[0]);
       projectBaseRef.current = null;
+      setSelectedRange(null);
+      setSelectRegionMode(false);
+      setSilences([]);
       resetHistory();
+      clearDecodedAudio();
       reset();
     }
   };
@@ -136,16 +187,46 @@ export default function App() {
   const handleReset = () => {
     setFile(null);
     projectBaseRef.current = null;
+    setSelectedRange(null);
+    setSelectRegionMode(false);
+    setSilences([]);
     resetHistory();
     reset();
+    clearDecodedAudio();
+    recorder.clear();
     setSrc(null);
   };
 
   const handleStart = () => {
     if (!file) return;
+    setSelectedRange(null);
+    setSelectRegionMode(false);
+    setSilences([]);
     pendingSaveRef.current = true;
     // Always produces both: a Spanish transcript and an English translation.
     run(file, { model, language: 'spanish', prompt: vocab.trim() || undefined, highAccuracy });
+  };
+
+  const handleDismissWelcome = () => {
+    setStoredFlag(WELCOME_SEEN_KEY);
+    setShowWelcome(false);
+  };
+
+  const handleShowWelcomeAgain = () => {
+    setShowFaq(false);
+    setShowWelcome(true);
+  };
+
+  const handleDismissResultTip = () => {
+    setStoredFlag(RESULT_TIP_SEEN_KEY);
+    setShowResultTip(false);
+  };
+
+  const runOptions = {
+    model,
+    language: 'spanish',
+    prompt: vocab.trim() || undefined,
+    highAccuracy,
   };
 
   // Save a freshly-completed run as a new project (once), then autosave edits.
@@ -192,10 +273,44 @@ export default function App() {
 
     pause();
     seek(0);
+    setSelectedRange(null);
+    setSelectRegionMode(false);
+    setSilences([]);
     projectBaseRef.current = null;
     pendingSaveRef.current = false;
     resetHistory();
     reset();
+  };
+
+  const handleRegionRerun = () => {
+    if (!file || !selectedRange) return;
+
+    const confirmed = window.confirm(
+      'Re-run just this selected region? Words and translation in that range will be replaced.'
+    );
+    if (!confirmed) return;
+
+    setUndoStack((s) => [...s, captions]);
+    setRedoStack([]);
+    runRegion(file, selectedRange, runOptions);
+  };
+
+  const handleExportClip = async (sentence: Sentence) => {
+    if (!file) return;
+
+    const baseName = file.name.replace(/\.[^/.]+$/, '');
+    const clipName = `${baseName}-${Math.round(sentence.start)}-${Math.round(sentence.end)}`;
+    const wav = await extractWavClip(file, sentence.start, sentence.end);
+    await saveBlobFile(`${clipName}.wav`, wav);
+    await saveTextFile(`${clipName}.txt`, 'text/plain;charset=utf-8', `${sentence.text}\n`);
+  };
+
+  const handleSetLoopStart = () => {
+    setLoopRange({ start: currentTime, end: loopRange?.end ?? Math.min(duration, currentTime + 5) });
+  };
+
+  const handleSetLoopEnd = () => {
+    setLoopRange({ start: loopRange?.start ?? Math.max(0, currentTime - 5), end: currentTime });
   };
 
   const handleOpenProject = async (id: string) => {
@@ -205,6 +320,10 @@ export default function App() {
       type: p.audioBlob.type || 'audio/*',
     });
     setFile(restored);
+    clearDecodedAudio();
+    setSelectedRange(null);
+    setSelectRegionMode(false);
+    setSilences([]);
     projectBaseRef.current = {
       id: p.id,
       name: p.name,
@@ -243,16 +362,81 @@ export default function App() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const formatRange = (range: { start: number; end: number }) =>
+    `${formatTimeStr(Math.min(range.start, range.end))} - ${formatTimeStr(Math.max(range.start, range.end))}`;
+
+  useEffect(() => {
+    if (!done || !file) {
+      setSilences([]);
+      return;
+    }
+
+    let cancelled = false;
+    decodeAudioFile(file)
+      .then((decoded) => {
+        if (cancelled) return;
+        setSilences(findSilences(decoded.samples, 16000, { thresholdDb: -45, minSilenceSec: 0.5 }));
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSilences([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [done, file]);
+
+  const formatElapsedMs = (ms: number) => {
+    const seconds = Math.round(ms / 1000);
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  useEffect(() => {
+    const isEditableTarget = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName.toLowerCase();
+      return tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable;
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!done || isEditableTarget(event.target)) return;
+
+      if (event.key === ' ') {
+        event.preventDefault();
+        togglePlay();
+      } else if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        seek(currentTime - 5);
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        seek(currentTime + 5);
+      } else if (event.key === 'Tab') {
+        const nextWord = captions.find((word) => word.start > currentTime + 0.05);
+        if (nextWord) {
+          event.preventDefault();
+          seek(nextWord.start);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [captions, currentTime, done, seek, togglePlay]);
+
   return (
     <div className="relative flex flex-col h-screen max-h-screen text-slate-100 p-3 md:p-6 overflow-hidden">
       {/* Ambient Azure glow background */}
       <div className="app-bg" aria-hidden="true" />
 
       {/* Welcome gate */}
-      {showWelcome && <WelcomeScreen onStart={() => setShowWelcome(false)} />}
+      {showWelcome && <WelcomeScreen onStart={handleDismissWelcome} />}
 
       {/* FAQ */}
-      <FaqModal open={showFaq} onClose={() => setShowFaq(false)} />
+      <FaqModal open={showFaq} onClose={() => setShowFaq(false)} onShowWelcome={handleShowWelcomeAgain} />
 
       {/* Saved transcripts library */}
       <LibraryModal
@@ -300,16 +484,77 @@ export default function App() {
         {/* Upload + options panel */}
         <section className="glass rounded-2xl p-4">
           {!file ? (
-            <div className="relative border-2 border-dashed border-white/10 hover:border-sky-400/50 rounded-xl p-5 flex flex-col items-center justify-center text-center transition-colors">
-              <input
-                type="file"
-                accept="audio/*"
-                onChange={handleFileChange}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-              />
-              <FileAudio className="w-8 h-8 text-sky-300 mb-2" />
-              <span className="text-xs font-semibold text-slate-100">Choose Audio File</span>
-              <span className="text-[10px] text-slate-400 mt-1">MP3, WAV, M4A, OGG</span>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-1 bg-white/[0.03] rounded-xl p-1">
+                <button
+                  onClick={() => setInputMode('file')}
+                  className={`rounded-lg py-1.5 text-[11px] font-semibold transition-colors cursor-pointer ${
+                    inputMode === 'file' ? 'bg-sky-500/20 text-sky-100' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Choose file
+                </button>
+                <button
+                  onClick={() => setInputMode('record')}
+                  className={`rounded-lg py-1.5 text-[11px] font-semibold transition-colors cursor-pointer ${
+                    inputMode === 'record' ? 'bg-sky-500/20 text-sky-100' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Record
+                </button>
+              </div>
+
+              {inputMode === 'file' ? (
+                <div className="relative border-2 border-dashed border-white/10 hover:border-sky-400/50 rounded-xl p-5 flex flex-col items-center justify-center text-center transition-colors">
+                  <input
+                    type="file"
+                    accept="audio/*"
+                    onChange={handleFileChange}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+                  <FileAudio className="w-8 h-8 text-sky-300 mb-2" />
+                  <span className="text-xs font-semibold text-slate-100">Choose Audio File</span>
+                  <span className="text-[10px] text-slate-400 mt-1">MP3, WAV, M4A, OGG</span>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-white/10 bg-white/[0.03] p-5 text-center space-y-4">
+                  <div className="mx-auto w-14 h-14 rounded-full bg-sky-500/15 border border-sky-400/20 flex items-center justify-center">
+                    <Mic className="w-7 h-7 text-sky-200" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-100">
+                      {recorder.status === 'recording' ? 'Recording...' : 'Record from microphone'}
+                    </p>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      {recorder.status === 'recording'
+                        ? formatElapsedMs(recorder.elapsedMs)
+                        : 'When you stop, the recording loads like any other audio file.'}
+                    </p>
+                  </div>
+                  <div className="h-2 rounded-full bg-white/[0.05] overflow-hidden border border-white/10">
+                    <div
+                      className="h-full bg-gradient-to-r from-sky-400 to-blue-500 transition-all"
+                      style={{ width: `${Math.round(recorder.level * 100)}%` }}
+                    />
+                  </div>
+                  {recorder.error && <p className="text-[10px] text-rose-300">{recorder.error}</p>}
+                  {recorder.status === 'recording' ? (
+                    <button
+                      onClick={recorder.stop}
+                      className="inline-flex items-center gap-2 rounded-xl bg-rose-500/15 border border-rose-300/30 text-rose-100 px-4 py-2 text-xs font-semibold hover:bg-rose-500/20 transition-colors cursor-pointer"
+                    >
+                      <Square className="w-4 h-4" /> Stop recording
+                    </button>
+                  ) : (
+                    <button
+                      onClick={recorder.start}
+                      className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-blue-600 text-white px-4 py-2 text-xs font-bold hover:from-sky-300 hover:to-blue-500 transition-colors cursor-pointer"
+                    >
+                      <Mic className="w-4 h-4" /> Start recording
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           ) : (
             <div className="space-y-3.5">
@@ -415,12 +660,36 @@ export default function App() {
         {/* Player + canvas + editor (after transcription) */}
         {done && (
           <>
+            {showResultTip && (
+              <div className="glass rounded-2xl p-3 flex items-start gap-3 border border-sky-400/20">
+                <Info className="w-4 h-4 text-sky-300 shrink-0 mt-0.5" />
+                <div className="flex-grow">
+                  <p className="text-xs font-semibold text-slate-100">Your transcript is ready.</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Tap any Spanish word to fix it, or open Read view for sentence-style editing and clip export.
+                  </p>
+                </div>
+                <button
+                  onClick={handleDismissResultTip}
+                  className="text-[11px] text-slate-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
+
             <div className="glass rounded-2xl p-4 space-y-3">
               <AudioCanvas
                 duration={duration}
                 currentTime={currentTime}
                 isPlaying={isPlaying}
+                selection={selectedRange}
+                selectionMode={selectRegionMode}
                 onSeek={seek}
+                onSelectRange={(range) => {
+                  setSelectedRange(range);
+                  setSelectRegionMode(false);
+                }}
               />
 
               <div className="flex items-center justify-between">
@@ -448,6 +717,83 @@ export default function App() {
                   <CheckCircle className="w-3.5 h-3.5" /> ES + EN
                 </div>
               </div>
+
+              <div className="flex flex-wrap items-center gap-2 border-t border-white/10 pt-3">
+                <button
+                  onClick={() => setSelectRegionMode((value) => !value)}
+                  className={`px-3 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors cursor-pointer ${
+                    selectRegionMode
+                      ? 'bg-amber-400/15 border-amber-300/40 text-amber-100'
+                      : 'bg-white/[0.04] border-white/10 text-slate-300 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  {selectRegionMode ? 'Drag on waveform' : 'Select region'}
+                </button>
+                {selectedRange && (
+                  <>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      {formatRange(selectedRange)}
+                    </span>
+                    <button
+                      onClick={handleRegionRerun}
+                      className="px-3 py-1.5 rounded-lg bg-amber-400/15 border border-amber-300/40 text-amber-100 text-[11px] font-semibold hover:bg-amber-400/20 transition-colors cursor-pointer"
+                    >
+                      Re-run selected region
+                    </button>
+                    <button
+                      onClick={() => setSelectedRange(null)}
+                      className="px-2.5 py-1.5 rounded-lg bg-white/[0.03] border border-white/10 text-slate-400 text-[11px] hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  </>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 border-t border-white/10 pt-3">
+                <label className="flex items-center gap-2 text-[11px] text-slate-400">
+                  Speed
+                  <select
+                    value={playbackRate}
+                    onChange={(event) => setPlaybackRate(Number(event.target.value))}
+                    className="bg-white/[0.04] text-slate-100 border border-white/10 rounded-lg px-2 py-1 text-[11px] focus:border-sky-400 focus:outline-none"
+                  >
+                    {[0.5, 0.75, 1, 1.25, 1.5, 2].map((rate) => (
+                      <option key={rate} value={rate}>
+                        {rate}x
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  onClick={handleSetLoopStart}
+                  className="px-2.5 py-1.5 rounded-lg bg-white/[0.04] border border-white/10 text-slate-300 text-[11px] hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                >
+                  Set A
+                </button>
+                <button
+                  onClick={handleSetLoopEnd}
+                  className="px-2.5 py-1.5 rounded-lg bg-white/[0.04] border border-white/10 text-slate-300 text-[11px] hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                >
+                  Set B
+                </button>
+                {loopRange && (
+                  <>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      Loop {formatRange(loopRange)}
+                    </span>
+                    <button
+                      onClick={clearLoopRange}
+                      className="px-2.5 py-1.5 rounded-lg bg-white/[0.03] border border-white/10 text-slate-400 text-[11px] hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                    >
+                      Clear loop
+                    </button>
+                  </>
+                )}
+                <p className="w-full text-[10px] text-slate-500">
+                  Shortcuts: Space play/pause, left/right seek 5s, Tab next word.
+                </p>
+              </div>
             </div>
 
             <TranscriptView
@@ -465,6 +811,8 @@ export default function App() {
               canUndo={undoStack.length > 0}
               canRedo={redoStack.length > 0}
               canRevert={originalRef.current !== null && originalRef.current !== captions}
+              silences={silences}
+              onExportClip={handleExportClip}
             />
 
             <TranslationPanel

@@ -174,7 +174,7 @@ export function CaptionEditor({
       {/* Footer hint */}
       {captions.length > 0 && (
         <div className="mt-3 pt-3 border-t border-slate-800 text-[10px] text-slate-500 text-center font-mono">
-          💡 Tap a word to edit & seek. Virtualized index hides out-of-bounds DOM nodes.
+          Tip: tap a word to edit and seek. The editor only renders the nearby timeline.
         </div>
       )}
     </div>
