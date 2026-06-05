@@ -3,6 +3,7 @@ import { FileText, Captions, Code, Table, Languages, Clipboard, Check } from 'lu
 import { CaptionWord } from './CaptionEditor';
 import type { Translation } from '../hooks/useTranscriber';
 import { EXPORT_FORMATS, toTxt, type ExportFormat } from '../lib/exporters';
+import { saveTextFile } from '../lib/fileSave';
 
 interface TranscriptExportProps {
   captions: CaptionWord[];
@@ -24,22 +25,12 @@ export function CaptionExport({ captions, translation, fileName = 'transcript' }
   const disabled = captions.length === 0;
   const input = { words: captions, translation: translation ?? null };
 
-  const triggerDownload = (content: string, mime: string, extension: string) => {
-    const blob = new Blob([content], { type: mime });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    const safeName = fileName.replace(/\.[^/.]+$/, '');
-    link.download = `${safeName}.${extension}`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
   const handleExport = (fmt: ExportFormat) => {
     if (disabled) return;
-    triggerDownload(fmt.build(input), fmt.mime, fmt.extension);
+    const safeName = fileName.replace(/\.[^/.]+$/, '');
+    saveTextFile(`${safeName}.${fmt.extension}`, fmt.mime, fmt.build(input)).catch((err) =>
+      console.error('Save failed:', err)
+    );
   };
 
   const handleCopy = async () => {
