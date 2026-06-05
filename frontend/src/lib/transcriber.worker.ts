@@ -1,14 +1,14 @@
 /// <reference lib="webworker" />
 // On-device Whisper inference worker. Loads a quantized Whisper model via
-// Transformers.js (ONNX Runtime / WASM), keeps it cached across runs, and emits
-// word-level timestamped segments. Nothing leaves the device; no server involved.
+// Transformers.js (ONNX Runtime / WASM) and processes the audio in bounded,
+// overlapping WINDOWS — one at a time — so long files never exhaust memory.
+// After each window it reports the wall-clock time it took, letting the main
+// thread compute a device-calibrated ETA. Nothing leaves the device.
 
 import { pipeline, env } from '@huggingface/transformers';
+import { planWindows, sliceSamples } from './chunker';
+import { mergeWindowed, type TimedItem } from './merge';
 
-// Pull model weights from the Hugging Face hub on first run (cached in the
-// browser Cache API afterwards → offline forever). The ONNX Runtime WASM binary
-// is bundled locally by Vite (emitted into assets/ via import.meta.url), so the
-// runtime needs no network — only the one-time model download does.
 env.allowLocalModels = false;
 const wasm = env.backends?.onnx?.wasm;
 if (wasm) {
@@ -19,14 +19,23 @@ if (wasm) {
 
 export type WhisperModel = 'Xenova/whisper-base' | 'Xenova/whisper-tiny';
 
+const SAMPLE_RATE = 16000;
+const WINDOW_SEC = 28;
+const OVERLAP_SEC = 4;
+
 interface RunMessage {
   type: 'run';
   audio: Float32Array;
   model: WhisperModel;
   language: string; // source language of the audio, e.g. 'spanish'
+  prompt?: string; // optional vocabulary hint
 }
+interface CancelMessage {
+  type: 'cancel';
+}
+type IncomingMessage = RunMessage | CancelMessage;
 
-type IncomingMessage = RunMessage;
+let cancelRequested = false;
 
 // One cached pipeline per model id so switching size doesn't reload needlessly.
 // Typed as `any`: the fully-resolved pipeline union is too large for tsc.
@@ -47,64 +56,117 @@ function getPipeline(model: WhisperModel): Promise<any> {
   return p;
 }
 
+interface RawChunk {
+  text: string;
+  timestamp: [number, number | null];
+}
+
+function toItems(output: any): TimedItem[] {
+  const chunks: RawChunk[] = output?.chunks ?? [];
+  return chunks
+    .filter((c) => c.text && c.text.trim().length > 0)
+    .map((c) => ({
+      text: c.text.trim(),
+      start: c.timestamp?.[0] ?? 0,
+      end: c.timestamp?.[1] ?? c.timestamp?.[0] ?? 0,
+    }));
+}
+
 self.addEventListener('message', async (event: MessageEvent<IncomingMessage>) => {
   const msg = event.data;
+
+  if (msg.type === 'cancel') {
+    cancelRequested = true;
+    return;
+  }
   if (msg.type !== 'run') return;
+
+  cancelRequested = false;
 
   try {
     self.postMessage({ type: 'status', status: 'loading-model' });
     const transcriber = await getPipeline(msg.model);
 
-    // Pass 1 — transcript in the source language, word-level timestamps.
-    self.postMessage({ type: 'status', status: 'transcribing' });
-    const txOutput: any = await transcriber(msg.audio, {
-      language: msg.language,
-      task: 'transcribe',
-      return_timestamps: 'word',
-      chunk_length_s: 30,
-      stride_length_s: 5,
-    });
+    const windows = planWindows(msg.audio.length, SAMPLE_RATE, WINDOW_SEC, OVERLAP_SEC);
+    // Two passes (transcribe + translate) per window = total work units.
+    self.postMessage({ type: 'plan', windowCount: windows.length, passes: 2 });
 
-    // txOutput.chunks: [{ text, timestamp: [start, end] }]
-    const txChunks: Array<{ text: string; timestamp: [number, number | null] }> =
-      txOutput?.chunks ?? [];
-    const words = txChunks
-      .filter((c) => c.text && c.text.trim().length > 0)
-      .map((c, idx) => ({
-        id: `word-${idx}`,
-        text: c.text.trim(),
-        start: c.timestamp?.[0] ?? 0,
-        end: c.timestamp?.[1] ?? c.timestamp?.[0] ?? 0,
-      }));
+    const txPerWindow: TimedItem[][] = [];
+    const trPerWindow: TimedItem[][] = [];
 
-    // Pass 2 — English translation, segment-level timestamps. Reuses the same
-    // already-loaded model: no extra download, no extra storage. Whisper's
-    // built-in translate task always targets English.
-    self.postMessage({ type: 'status', status: 'translating' });
-    const trOutput: any = await transcriber(msg.audio, {
-      language: msg.language,
-      task: 'translate',
-      return_timestamps: true,
-      chunk_length_s: 30,
-      stride_length_s: 5,
-    });
+    for (const w of windows) {
+      if (cancelRequested) {
+        self.postMessage({ type: 'cancelled' });
+        return;
+      }
 
-    const trChunks: Array<{ text: string; timestamp: [number, number | null] }> =
-      trOutput?.chunks ?? [];
-    const segments = trChunks
-      .filter((c) => c.text && c.text.trim().length > 0)
-      .map((c, idx) => ({
-        id: `seg-${idx}`,
-        text: c.text.trim(),
-        start: c.timestamp?.[0] ?? 0,
-        end: c.timestamp?.[1] ?? c.timestamp?.[0] ?? 0,
-      }));
+      const slice = sliceSamples(msg.audio, w);
+
+      // Pass 1 — transcript (Spanish), word-level timestamps.
+      self.postMessage({ type: 'status', status: 'transcribing' });
+      let t0 = performance.now();
+      const txOutput: any = await transcriber(slice, {
+        language: msg.language,
+        task: 'transcribe',
+        return_timestamps: 'word',
+        chunk_length_s: 30,
+        stride_length_s: 5,
+        ...(msg.prompt ? { prompt: msg.prompt } : {}),
+      });
+      txPerWindow.push(toItems(txOutput));
+      self.postMessage({
+        type: 'window',
+        pass: 'transcribe',
+        windowIndex: w.index,
+        wallMs: performance.now() - t0,
+      });
+
+      if (cancelRequested) {
+        self.postMessage({ type: 'cancelled' });
+        return;
+      }
+
+      // Pass 2 — English translation, segment-level timestamps.
+      self.postMessage({ type: 'status', status: 'translating' });
+      t0 = performance.now();
+      const trOutput: any = await transcriber(slice, {
+        language: msg.language,
+        task: 'translate',
+        return_timestamps: true,
+        chunk_length_s: 30,
+        stride_length_s: 5,
+      });
+      trPerWindow.push(toItems(trOutput));
+      self.postMessage({
+        type: 'window',
+        pass: 'translate',
+        windowIndex: w.index,
+        wallMs: performance.now() - t0,
+      });
+    }
+
+    const wordItems = mergeWindowed(txPerWindow, windows);
+    const segItems = mergeWindowed(trPerWindow, windows);
+
+    const words = wordItems.map((it, idx) => ({
+      id: `word-${idx}`,
+      text: it.text,
+      start: it.start,
+      end: it.end,
+    }));
+    const segments = segItems.map((it, idx) => ({
+      id: `seg-${idx}`,
+      text: it.text,
+      start: it.start,
+      end: it.end,
+    }));
+    const translationText = segments.map((s) => s.text).join(' ');
 
     self.postMessage({
       type: 'result',
       words,
-      text: txOutput?.text ?? '',
-      translation: { segments, text: (trOutput?.text ?? '').trim() },
+      text: words.map((w) => w.text).join(' '),
+      translation: { segments, text: translationText },
     });
   } catch (err: any) {
     self.postMessage({ type: 'error', message: err?.message ?? String(err) });

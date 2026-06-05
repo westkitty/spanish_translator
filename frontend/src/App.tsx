@@ -7,7 +7,6 @@ import {
   FileAudio,
   CheckCircle,
   AlertTriangle,
-  RefreshCw,
   Info,
   Cpu,
   Languages,
@@ -21,6 +20,7 @@ import { CaptionExport } from './components/CaptionExport';
 import { TranslationPanel } from './components/TranslationPanel';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { FaqModal } from './components/FaqModal';
+import { ProgressPanel } from './components/ProgressPanel';
 import type { WhisperModel } from './lib/transcriber.worker';
 
 export default function App() {
@@ -29,7 +29,8 @@ export default function App() {
   const [showWelcome, setShowWelcome] = useState(true);
   const [showFaq, setShowFaq] = useState(false);
 
-  const { status, modelFiles, captions, translation, error, run, reset, setCaptions } = useTranscriber();
+  const { status, modelFiles, captions, translation, progress, error, run, cancel, reset, setCaptions } =
+    useTranscriber();
 
   const {
     isPlaying,
@@ -83,15 +84,6 @@ export default function App() {
     const total = files.reduce((sum, f) => sum + f.progress, 0);
     return Math.round(total / files.length);
   }, [modelFiles]);
-
-  const statusLabel: Record<string, string> = {
-    decoding: 'Decoding audio to 16 kHz mono…',
-    'loading-model': modelProgress > 0 && modelProgress < 100
-      ? `Downloading model (${modelProgress}%)…`
-      : 'Loading model into memory…',
-    transcribing: 'Transcribing Spanish (1/2)…',
-    translating: 'Translating to English (2/2)…',
-  };
 
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 Bytes';
@@ -236,34 +228,12 @@ export default function App() {
 
         {/* Engine pipeline status */}
         {isWorking && (
-          <div className="glass rounded-2xl p-5 flex flex-col items-center justify-center text-center py-8 space-y-4">
-            <RefreshCw className="w-8 h-8 text-sky-300 animate-spin" />
-            <div>
-              <h3 className="text-sm font-semibold text-slate-100 uppercase tracking-wide">
-                {status === 'transcribing'
-                  ? 'Transcribing'
-                  : status === 'translating'
-                  ? 'Translating'
-                  : status === 'decoding'
-                  ? 'Decoding'
-                  : 'Model'}
-              </h3>
-              <p className="text-xs text-slate-400 mt-1 font-mono">{statusLabel[status]}</p>
-            </div>
-
-            {status === 'loading-model' && modelProgress > 0 && (
-              <div className="w-full max-w-md bg-white/[0.04] rounded-full h-2 overflow-hidden border border-white/10">
-                <div
-                  className="bg-gradient-to-r from-sky-400 to-blue-500 h-full transition-all duration-300"
-                  style={{ width: `${modelProgress}%` }}
-                />
-              </div>
-            )}
-
-            <p className="text-[10px] text-slate-400 font-mono">
-              Everything runs locally — your audio never leaves this device.
-            </p>
-          </div>
+          <ProgressPanel
+            status={status}
+            modelProgress={modelProgress}
+            progress={progress}
+            onCancel={cancel}
+          />
         )}
 
         {/* Player + canvas + editor (after transcription) */}
