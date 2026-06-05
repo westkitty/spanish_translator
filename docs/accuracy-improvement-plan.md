@@ -47,12 +47,19 @@ Branch: `feat/accuracy-improvements`. Each phase is one (or more) commits.
   - Leading/trailing silence trimming (timestamp-offset bookkeeping) — low marginal
     value once handoffs are silence-aware.
 
-### Phase 3 — Model tier upgrade
-- [ ] Expand `WhisperModel` to tiny | base | small | large-v3-turbo
-- [ ] Tier UI (Fast / Balanced / Accurate / Best); `small` default where capable
-- [ ] WebGPU feature-detect path (fp16 / q4f16) with WASM fallback
-- [ ] Multi-tier model caching; README footprint update
-- [ ] Benchmark largest practical model on real devices
+### Phase 3 — Model tier upgrade  ✅
+- [x] `WhisperModel` expanded to tiny | base | small | large-v3-turbo
+      (`src/lib/models.ts`, +tests)
+- [x] Tier UI (Fast / Balanced / Accurate / Best) built from `MODEL_TIERS`;
+      Best is hidden on non-WebGPU devices; Accurate (small) flagged recommended
+- [x] WebGPU feature-detect (`detectWebGPU`) + per-device dtype (`resolveBackend`):
+      WASM → fp32 encoder/q8 decoder; WebGPU → fp16
+- [x] Independent per-tier model caching (Transformers.js Cache API, one entry
+      per id); README footprint table updated
+- [~] Default left at `base` (safe) and `small` benchmarking on real devices is
+      pending — flip `defaultModel()` to `small` once the harness has device
+      timings confirming acceptable speed. (On-device WebGPU-in-WebView support
+      also needs confirming on the target hardware.)
 
 ### Phase 4 — Translation quality
 - [ ] Opus-MT `Xenova/opus-mt-es-en` as a dedicated NMT pipeline

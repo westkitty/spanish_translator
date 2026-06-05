@@ -36,14 +36,16 @@ import { decodeAudioFile, extractWavClip } from './lib/audio';
 import { findSilences, type SilenceRange } from './lib/vad';
 import { saveBlobFile, saveTextFile } from './lib/fileSave';
 import { getStoredFlag, setStoredFlag } from './lib/storage';
-import type { WhisperModel } from './lib/transcriber.worker';
+import { availableTiers, defaultModel, detectWebGPU, type WhisperModel } from './lib/models';
 
 const WELCOME_SEEN_KEY = 'spanish-whisper-seen-welcome';
 const RESULT_TIP_SEEN_KEY = 'spanish-whisper-seen-result-tip';
 
 export default function App() {
   const [file, setFile] = useState<File | null>(null);
-  const [model, setModel] = useState<WhisperModel>('Xenova/whisper-base');
+  const [hasWebGPU] = useState(detectWebGPU);
+  const tiers = useMemo(() => availableTiers(hasWebGPU), [hasWebGPU]);
+  const [model, setModel] = useState<WhisperModel>(() => defaultModel(detectWebGPU()));
   const [vocab, setVocab] = useState('');
   const [highAccuracy, setHighAccuracy] = useState(false);
   const [showWelcome, setShowWelcome] = useState(() => !getStoredFlag(WELCOME_SEEN_KEY));
@@ -587,9 +589,16 @@ export default function App() {
                       onChange={(e) => setModel(e.target.value as WhisperModel)}
                       className="bg-white/[0.04] text-slate-100 border border-white/10 rounded-lg px-2 py-1.5 text-xs focus:border-sky-400 focus:outline-none"
                     >
-                      <option value="Xenova/whisper-base">Base · accurate (~85 MB)</option>
-                      <option value="Xenova/whisper-tiny">Tiny · fast (~45 MB)</option>
+                      {tiers.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.label}
+                          {t.recommended ? ' · recommended' : ''}
+                        </option>
+                      ))}
                     </select>
+                    <span className="text-[10px] text-slate-500">
+                      {tiers.find((t) => t.id === model)?.blurb}
+                    </span>
                   </label>
                   <p className="text-[10px] text-slate-400 flex items-center gap-1.5">
                     <Languages className="w-3 h-3 text-sky-300" />

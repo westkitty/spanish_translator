@@ -19,12 +19,30 @@ every run. Scrub, edit, and export both.
 
 ## Models & footprint
 
-| Mode | Model | On-device size |
-|------|-------|----------------|
-| Spanish transcript / English translation | `Xenova/whisper-base` (default) | ~85 MB |
-| Faster / low-end fallback | `Xenova/whisper-tiny` | ~45 MB |
+The model is chosen by a **quality tier**. Each tier downloads once and is cached
+independently, so switching tiers only downloads the new one.
 
-Total installed footprint is roughly **~100 MB** (app + ONNX runtime + base model).
+| Tier | Model | Backend | On-device size |
+|------|-------|---------|----------------|
+| Fast | `Xenova/whisper-tiny` | WASM / WebGPU | ~45 MB |
+| Balanced (default) | `Xenova/whisper-base` | WASM / WebGPU | ~85 MB |
+| Accurate (recommended) | `Xenova/whisper-small` | WASM / WebGPU | ~250 MB |
+| Best | `onnx-community/whisper-large-v3-turbo` | **WebGPU only** | large |
+
+**Quantization is per-backend** (see `src/lib/models.ts`):
+
+- **WASM/CPU** (universal fallback): the quantization-sensitive **encoder runs at
+  fp32**, the tolerant decoder at q8. Keeping the encoder full-precision is the
+  single biggest accuracy fix — q8 on the encoder was the previous default and
+  badly degraded Spanish recognition.
+- **WebGPU** (when the device supports it): **fp16** throughout — faster and far
+  more accurate than q8, which is what makes the Accurate/Best tiers practical.
+
+The **Best** tier is only offered on WebGPU-capable devices (recent Android 12+
+Chromium WebView / desktop Chrome, Firefox, Safari, Edge).
+
+Total installed footprint is roughly **~100 MB** with the Balanced tier (app +
+ONNX runtime + base model), more with larger tiers.
 
 Each run does **two passes on the same loaded model** (no extra download, no extra
 storage):

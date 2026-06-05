@@ -11,6 +11,7 @@ import { mergeWindowed, silenceAwareCuts, type TimedItem } from './merge';
 import { preprocessForWhisper } from './audiodsp';
 import { findSilences } from './vad';
 import { collapseRepeatedPhrases } from './dehallucinate';
+import { resolveBackend, detectWebGPU, type WhisperModel } from './models';
 
 env.allowLocalModels = false;
 const wasm = env.backends?.onnx?.wasm;
@@ -20,7 +21,11 @@ if (wasm) {
   wasm.numThreads = 1;
 }
 
-export type WhisperModel = 'Xenova/whisper-base' | 'Xenova/whisper-tiny';
+// Detected once per worker. WebGPU (when present) unlocks fp16 + the larger
+// tiers at a usable speed; otherwise we fall back to the fp32-encoder WASM path.
+const HAS_WEBGPU = detectWebGPU();
+
+export type { WhisperModel };
 
 const SAMPLE_RATE = 16000;
 const WINDOW_SEC = 28;
@@ -49,16 +54,14 @@ const pipelines = new Map<WhisperModel, Promise<any>>();
 function getPipeline(model: WhisperModel): Promise<any> {
   let p = pipelines.get(model);
   if (!p) {
-    // Per-module dtype. Whisper's ENCODER is extremely sensitive to quantization
-    // — q8 on the encoder was the single biggest hidden accuracy loss. We keep
-    // the encoder at full precision (fp32, the only precision with reliable
-    // kernels on the ONNX-Runtime WASM/CPU backend) and quantize only the
-    // far-more-tolerant decoder to q8. Costs ~30 MB more on first download for a
-    // meaningful WER drop. (On a future WebGPU path, fp16/q4f16 become viable.)
+    // Device + quantization policy lives in models.ts. On WASM: fp32 encoder
+    // (the encoder is extremely quantization-sensitive — q8 there was the
+    // biggest hidden accuracy loss) + q8 decoder. On WebGPU: fp16 throughout.
     // Ref: https://huggingface.co/docs/transformers.js/guides/dtypes
+    const backend = resolveBackend(model, HAS_WEBGPU);
     p = pipeline('automatic-speech-recognition', model, {
-      dtype: { encoder_model: 'fp32', decoder_model_merged: 'q8' },
-      device: 'wasm',
+      dtype: backend.dtype as any,
+      device: backend.device,
       progress_callback: (progress: any) => {
         self.postMessage({ type: 'model-progress', progress });
       },

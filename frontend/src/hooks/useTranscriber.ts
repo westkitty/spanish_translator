@@ -4,7 +4,7 @@ import { EtaEstimator } from '../lib/eta';
 import { replaceTimedRange, type TimedRange } from '../lib/timeline';
 import { parseGlossary, applyGlossaryToWords, applyGlossaryToText } from '../lib/glossary';
 import type { CaptionWord } from '../components/CaptionEditor';
-import type { WhisperModel } from '../lib/transcriber.worker';
+import type { WhisperModel } from '../lib/models';
 
 export type TranscriberStatus =
   | 'idle'
