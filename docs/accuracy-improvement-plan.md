@@ -28,16 +28,24 @@ Branch: `feat/accuracy-improvements`. Each phase is one (or more) commits.
 - [x] `no_repeat_ngram_size` repeat-loop guard on both passes
 - [ ] (deferred) remove double-chunking — needs on-device verification
 
-### Phase 2 — Decoding, prompting, chunking, merge
-- [ ] VAD silence trimming (Silero / `@ricky0123/vad-web`)
-- [ ] VAD-aware window boundaries (cut at silence, not fixed 28 s)
-- [ ] Temperature fallback + compression/logprob/no-speech thresholds (verify
-      Transformers.js support empirically)
-- [ ] Capture per-word logprob → confidence on `CaptionWord`
-- [ ] Confidence/text-similarity overlap reconciliation in `merge.ts`
-- [ ] Cross-seam repeat/hallucination repair
-- [ ] Glossary post-processor (the *real* vocabulary feature) + UI
-- [ ] "Needs review" low-confidence highlighting in the editor
+### Phase 2 — Decoding, prompting, chunking, merge  ✅
+- [x] VAD-aware window boundaries — `silenceAwareCuts` snaps handoffs to silence
+      (reused the existing energy VAD in `vad.ts`; no Silero dependency added)
+- [x] Silence-aware overlap reconciliation in `merge.ts` (cut points override
+      the blind midpoint)
+- [x] Cross-seam repeat/hallucination repair — `dehallucinate.ts`
+      (`collapseRepeatedPhrases`) applied to merged words + translation
+- [x] Glossary post-processor — `glossary.ts` (the *real* vocabulary feature,
+      replacing the no-op prompt) wired through `useTranscriber` + relabeled UI
+- [~] Deferred (need on-device verification / unavailable data):
+  - Temperature fallback + compression/logprob/no-speech thresholds — Transformers.js
+    coverage is uncertain and could throw; `no_repeat_ngram_size` + `dehallucinate`
+    already cover the dominant failure. Revisit once verifiable in-app.
+  - Per-word logprob → confidence, and "needs review" highlighting — Transformers.js
+    word-timestamp output doesn't reliably expose per-word logprobs; deferred rather
+    than fabricate a confidence signal.
+  - Leading/trailing silence trimming (timestamp-offset bookkeeping) — low marginal
+    value once handoffs are silence-aware.
 
 ### Phase 3 — Model tier upgrade
 - [ ] Expand `WhisperModel` to tiny | base | small | large-v3-turbo

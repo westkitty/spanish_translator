@@ -7,8 +7,10 @@
 
 import { pipeline, env } from '@huggingface/transformers';
 import { planWindows, sliceSamples } from './chunker';
-import { mergeWindowed, type TimedItem } from './merge';
+import { mergeWindowed, silenceAwareCuts, type TimedItem } from './merge';
 import { preprocessForWhisper } from './audiodsp';
+import { findSilences } from './vad';
+import { collapseRepeatedPhrases } from './dehallucinate';
 
 env.allowLocalModels = false;
 const wasm = env.backends?.onnx?.wasm;
@@ -117,6 +119,14 @@ self.addEventListener('message', async (event: MessageEvent<IncomingMessage>) =>
     // speech level it was trained on. Pure DSP — see audiodsp.ts.
     const audio = preprocessForWhisper(msg.audio, SAMPLE_RATE);
 
+    // Map the silences once so window handoffs can land between words instead of
+    // mid-word (see silenceAwareCuts), and so we know where hallucination is most
+    // likely. Thresholds are relative to the loudness-normalized signal.
+    const silences = findSilences(audio, SAMPLE_RATE, {
+      thresholdDb: -45,
+      minSilenceSec: 0.4,
+    });
+
     const windows = planWindows(audio.length, SAMPLE_RATE, WINDOW_SEC, OVERLAP_SEC);
     // Two passes (transcribe + translate) per window = total work units.
     self.postMessage({ type: 'plan', windowCount: windows.length, passes: 2 });
@@ -183,8 +193,17 @@ self.addEventListener('message', async (event: MessageEvent<IncomingMessage>) =>
       });
     }
 
-    const wordItems = mergeWindowed(txPerWindow, windows);
-    const segItems = mergeWindowed(trPerWindow, windows);
+    // Snap window handoffs to silences, then repair any verbatim repetition
+    // loops that survived across seams.
+    const cuts = silenceAwareCuts(windows, silences, 2);
+    const wordItems = collapseRepeatedPhrases(mergeWindowed(txPerWindow, windows, cuts), {
+      maxRepeats: 2,
+      maxPhraseLen: 6,
+    });
+    const segItems = collapseRepeatedPhrases(mergeWindowed(trPerWindow, windows, cuts), {
+      maxRepeats: 2,
+      maxPhraseLen: 6,
+    });
     const offsetSec = msg.offsetSec ?? 0;
 
     const words = wordItems.map((it, idx) => ({

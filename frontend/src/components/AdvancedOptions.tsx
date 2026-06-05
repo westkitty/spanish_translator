@@ -35,17 +35,18 @@ export function AdvancedOptions({
         <div className="px-3 pb-3 space-y-3 animate-fade-in">
           <label className="block">
             <span className="text-[10px] uppercase tracking-wide text-slate-500">
-              Names &amp; words to expect
+              Corrections &amp; names
             </span>
             <textarea
               value={vocab}
               onChange={(e) => onVocabChange(e.target.value)}
-              rows={2}
-              placeholder="e.g. names, places, or jargon you know are in the audio"
-              className="mt-1 w-full bg-white/[0.04] text-slate-100 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs focus:border-sky-400 focus:outline-none resize-none placeholder:text-slate-600"
+              rows={3}
+              placeholder={'watsap -> WhatsApp\nJosé\nNueva York'}
+              className="mt-1 w-full bg-white/[0.04] text-slate-100 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs font-mono focus:border-sky-400 focus:outline-none resize-none placeholder:text-slate-600"
             />
             <span className="text-[10px] text-slate-500 mt-1 block">
-              Helps it spell tricky words correctly.
+              One per line. Write <span className="text-slate-300">wrong -&gt; right</span> to fix a
+              word, or just type a name to lock its spelling. Applied after transcribing.
             </span>
           </label>
 

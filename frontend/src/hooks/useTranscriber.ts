@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { decodeAudioFile } from '../lib/audio';
 import { EtaEstimator } from '../lib/eta';
 import { replaceTimedRange, type TimedRange } from '../lib/timeline';
+import { parseGlossary, applyGlossaryToWords, applyGlossaryToText } from '../lib/glossary';
 import type { CaptionWord } from '../components/CaptionEditor';
 import type { WhisperModel } from '../lib/transcriber.worker';
 
@@ -41,6 +42,10 @@ export interface RunOptions {
   model: WhisperModel;
   language?: string;
   prompt?: string;
+  /** User glossary text (`wrong -> right`, one per line). Applied as a
+   *  deterministic post-decode correction — the real replacement for Whisper's
+   *  unsupported `prompt`. See lib/glossary.ts. */
+  glossary?: string;
   highAccuracy?: boolean;
 }
 
@@ -121,6 +126,8 @@ export function useTranscriber() {
       detach();
       activeModeRef.current = mode;
 
+      const glossaryRules = parseGlossary(opts.glossary ?? '');
+
       const handle = (event: MessageEvent<any>) => {
         const msg = event.data;
         switch (msg.type) {
@@ -157,8 +164,19 @@ export function useTranscriber() {
             break;
           }
           case 'result': {
-            const words = msg.words as CaptionWord[];
-            const nextTranslation = (msg.translation as Translation) ?? null;
+            // Apply the user glossary (post-decode correction) before anything
+            // else sees the result.
+            const words = applyGlossaryToWords(msg.words as CaptionWord[], glossaryRules);
+            const rawTranslation = (msg.translation as Translation) ?? null;
+            const nextTranslation: Translation | null = rawTranslation
+              ? {
+                  segments: rawTranslation.segments.map((s) => ({
+                    ...s,
+                    text: applyGlossaryToText(s.text, glossaryRules),
+                  })),
+                  text: applyGlossaryToText(rawTranslation.text, glossaryRules),
+                }
+              : null;
 
             if (activeModeRef.current.kind === 'region') {
               const range = activeModeRef.current.range;

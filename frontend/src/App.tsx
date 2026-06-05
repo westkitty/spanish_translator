@@ -204,7 +204,7 @@ export default function App() {
     setSilences([]);
     pendingSaveRef.current = true;
     // Always produces both: a Spanish transcript and an English translation.
-    run(file, { model, language: 'spanish', prompt: vocab.trim() || undefined, highAccuracy });
+    run(file, { model, language: 'spanish', glossary: vocab.trim() || undefined, highAccuracy });
   };
 
   const handleDismissWelcome = () => {
@@ -225,7 +225,7 @@ export default function App() {
   const runOptions = {
     model,
     language: 'spanish',
-    prompt: vocab.trim() || undefined,
+    glossary: vocab.trim() || undefined,
     highAccuracy,
   };
 
