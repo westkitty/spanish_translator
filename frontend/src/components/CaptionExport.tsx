@@ -84,7 +84,7 @@ export function CaptionExport({ captions, translation, fileName = 'transcript' }
   const disabled = captions.length === 0;
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-lg w-full">
+    <div className="glass rounded-2xl p-4 w-full">
       <h3 className="text-xs font-semibold tracking-wide text-slate-400 mb-3 uppercase">
         Export Transcript
       </h3>

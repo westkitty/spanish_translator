@@ -6,7 +6,7 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 3000,
+    port: 5183,
   },
   // Transformers.js / onnxruntime-web ship large prebuilt bundles that Vite's dep
   // optimizer shouldn't try to pre-bundle.

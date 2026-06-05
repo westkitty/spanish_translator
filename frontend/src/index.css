@@ -1,22 +1,117 @@
 @import "tailwindcss";
 
-/* Custom dark scrollbars styling */
+:root {
+  /* Azure glow palette */
+  --azure-400: #38bdf8;
+  --azure-500: #0ea5e9;
+  --azure-600: #0284c7;
+  --ink-950: #050912;
+  --ink-900: #0a1120;
+
+  --glass-bg: rgba(255, 255, 255, 0.05);
+  --glass-bg-strong: rgba(255, 255, 255, 0.08);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-border-strong: rgba(255, 255, 255, 0.16);
+}
+
+html,
+body {
+  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
+    Roboto, 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ---------------------------------------------------------------------------
+   Ambient background: deep midnight base with a soft Azure glow underneath.
+   Fixed, non-interactive, sits behind all content.
+--------------------------------------------------------------------------- */
+.app-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 80% at 50% 8%, rgba(49, 46, 129, 0.28) 0%, transparent 55%),
+    linear-gradient(180deg, var(--ink-900) 0%, var(--ink-950) 100%);
+  overflow: hidden;
+}
+
+/* The Azure glow — a large soft blob low/behind the main content. */
+.app-bg::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -22%;
+  width: 140vw;
+  height: 70vh;
+  transform: translateX(-50%);
+  background: radial-gradient(
+    closest-side,
+    rgba(56, 189, 248, 0.42) 0%,
+    rgba(14, 165, 233, 0.22) 38%,
+    rgba(2, 132, 199, 0.08) 64%,
+    transparent 80%
+  );
+  filter: blur(34px);
+  animation: azure-breathe 9s ease-in-out infinite;
+}
+
+@keyframes azure-breathe {
+  0%, 100% { opacity: 0.75; transform: translateX(-50%) scale(1); }
+  50%      { opacity: 1;    transform: translateX(-50%) scale(1.06); }
+}
+
+/* ---------------------------------------------------------------------------
+   Glassmorphism surfaces
+--------------------------------------------------------------------------- */
+.glass {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  box-shadow:
+    0 8px 32px rgba(2, 8, 23, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.glass-strong {
+  background: var(--glass-bg-strong);
+  border: 1px solid var(--glass-border-strong);
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  box-shadow:
+    0 16px 48px rgba(2, 8, 23, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+/* Azure ring accent for primary/glowing elements */
+.glow-azure {
+  box-shadow:
+    0 0 0 1px rgba(56, 189, 248, 0.4),
+    0 8px 30px rgba(14, 165, 233, 0.35);
+}
+
+.text-azure-glow {
+  text-shadow: 0 0 18px rgba(56, 189, 248, 0.45);
+}
+
+/* ---------------------------------------------------------------------------
+   Scrollbars
+--------------------------------------------------------------------------- */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
-
 ::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.8);
+  background: rgba(8, 14, 30, 0.6);
 }
-
 ::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.4);
+  background: rgba(56, 189, 248, 0.35);
   border-radius: 9999px;
 }
-
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.6);
+  background: rgba(56, 189, 248, 0.55);
 }
 
 /* Touch-friendly defaults */
@@ -26,8 +121,39 @@ body {
   overscroll-behavior-y: contain;
 }
 
-/* Override default input focus styles */
-input:focus, textarea:focus, select:focus {
-  outline: 2px solid var(--color-indigo-500);
+/* Focus rings — azure, visible for keyboard nav */
+input:focus,
+textarea:focus,
+select:focus {
+  outline: 2px solid var(--azure-500);
   outline-offset: 1px;
+}
+:focus-visible {
+  outline: 2px solid var(--azure-400);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------------------
+   Animations + reduced-motion
+--------------------------------------------------------------------------- */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.animate-fade-in { animation: fade-in 0.2s ease-out; }
+.animate-scale-in { animation: scale-in 0.28s cubic-bezier(0.22, 1, 0.36, 1); }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .app-bg::after { animation: none; }
 }

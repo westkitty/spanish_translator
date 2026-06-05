@@ -11,6 +11,7 @@ import {
   Info,
   Cpu,
   Languages,
+  HelpCircle,
 } from 'lucide-react';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { useTranscriber } from './hooks/useTranscriber';
@@ -18,11 +19,15 @@ import { AudioCanvas } from './components/AudioCanvas';
 import { CaptionEditor } from './components/CaptionEditor';
 import { CaptionExport } from './components/CaptionExport';
 import { TranslationPanel } from './components/TranslationPanel';
+import { WelcomeScreen } from './components/WelcomeScreen';
+import { FaqModal } from './components/FaqModal';
 import type { WhisperModel } from './lib/transcriber.worker';
 
 export default function App() {
   const [file, setFile] = useState<File | null>(null);
   const [model, setModel] = useState<WhisperModel>('Xenova/whisper-base');
+  const [showWelcome, setShowWelcome] = useState(true);
+  const [showFaq, setShowFaq] = useState(false);
 
   const { status, modelFiles, captions, translation, error, run, reset, setCaptions } = useTranscriber();
 
@@ -103,48 +108,66 @@ export default function App() {
   };
 
   return (
-    <div className="flex flex-col h-screen max-h-screen bg-slate-950 text-slate-100 p-3 md:p-6 overflow-hidden">
+    <div className="relative flex flex-col h-screen max-h-screen text-slate-100 p-3 md:p-6 overflow-hidden">
+      {/* Ambient Azure glow background */}
+      <div className="app-bg" aria-hidden="true" />
+
+      {/* Welcome gate */}
+      {showWelcome && <WelcomeScreen onStart={() => setShowWelcome(false)} />}
+
+      {/* FAQ */}
+      <FaqModal open={showFaq} onClose={() => setShowFaq(false)} />
+
       {/* Header bar */}
-      <header className="flex items-center justify-between pb-3 border-b border-slate-900">
-        <div className="flex items-center gap-2">
-          <div className="bg-indigo-600 p-1.5 rounded-lg">
-            <Volume2 className="w-5 h-5 text-white animate-pulse" />
+      <header className="relative z-10 glass rounded-2xl px-3 py-2.5 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="bg-gradient-to-br from-sky-400 to-blue-600 p-1.5 rounded-xl glow-azure">
+            <Volume2 className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-sm md:text-base font-extrabold tracking-wide uppercase bg-gradient-to-r from-indigo-400 to-pink-500 bg-clip-text text-transparent">
+            <h1 className="text-sm md:text-base font-extrabold tracking-tight bg-gradient-to-r from-sky-300 to-blue-400 bg-clip-text text-transparent">
               Spanish Whisper Engine
             </h1>
-            <p className="text-[10px] text-slate-500 font-medium">On-Device · No Server · Offline</p>
+            <p className="text-[10px] text-slate-400 font-medium">On-Device · No Server · Offline</p>
           </div>
         </div>
-        <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded-full px-2.5 py-1 text-[9px] font-mono text-emerald-400">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
-          ON-DEVICE
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 bg-sky-500/10 border border-sky-400/20 rounded-full px-2.5 py-1 text-[9px] font-mono text-sky-300">
+            <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-ping"></span>
+            ON-DEVICE
+          </div>
+          <button
+            onClick={() => setShowFaq(true)}
+            aria-label="Open FAQ"
+            className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+          >
+            <HelpCircle className="w-5 h-5" />
+          </button>
         </div>
       </header>
 
       {/* Main Body */}
-      <main className="flex-grow flex flex-col gap-3.5 my-3 overflow-y-auto pr-0.5">
+      <main className="relative z-10 flex-grow flex flex-col gap-3.5 my-3 overflow-y-auto pr-0.5">
 
         {/* Upload + options panel */}
-        <section className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-lg">
+        <section className="glass rounded-2xl p-4">
           {!file ? (
-            <div className="relative border-2 border-dashed border-slate-800 hover:border-indigo-500/50 rounded-lg p-5 flex flex-col items-center justify-center text-center transition-colors">
+            <div className="relative border-2 border-dashed border-white/10 hover:border-sky-400/50 rounded-xl p-5 flex flex-col items-center justify-center text-center transition-colors">
               <input
                 type="file"
                 accept="audio/*"
                 onChange={handleFileChange}
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
               />
-              <FileAudio className="w-8 h-8 text-indigo-400 mb-2" />
-              <span className="text-xs font-semibold text-slate-200">Choose Audio File</span>
-              <span className="text-[10px] text-slate-500 mt-1">MP3, WAV, M4A, OGG</span>
+              <FileAudio className="w-8 h-8 text-sky-300 mb-2" />
+              <span className="text-xs font-semibold text-slate-100">Choose Audio File</span>
+              <span className="text-[10px] text-slate-400 mt-1">MP3, WAV, M4A, OGG</span>
             </div>
           ) : (
             <div className="space-y-3.5">
-              <div className="flex items-start justify-between bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+              <div className="flex items-start justify-between bg-white/[0.03] p-2.5 rounded-xl border border-white/10">
                 <div className="flex items-center gap-2.5 overflow-hidden">
-                  <FileAudio className="w-7 h-7 text-indigo-400 shrink-0" />
+                  <FileAudio className="w-7 h-7 text-sky-300 shrink-0" />
                   <div className="overflow-hidden">
                     <p className="text-xs font-semibold truncate text-slate-200">{file.name}</p>
                     <p className="text-[10px] text-slate-500 font-mono mt-0.5">{formatBytes(file.size)}</p>
@@ -168,14 +191,14 @@ export default function App() {
                     <select
                       value={model}
                       onChange={(e) => setModel(e.target.value as WhisperModel)}
-                      className="bg-slate-950 text-slate-200 border border-slate-700 rounded px-2 py-1.5 text-xs focus:border-indigo-500 focus:outline-none"
+                      className="bg-white/[0.04] text-slate-100 border border-white/10 rounded-lg px-2 py-1.5 text-xs focus:border-sky-400 focus:outline-none"
                     >
                       <option value="Xenova/whisper-base">Base · accurate (~85 MB)</option>
                       <option value="Xenova/whisper-tiny">Tiny · fast (~45 MB)</option>
                     </select>
                   </label>
-                  <p className="text-[10px] text-slate-500 flex items-center gap-1.5">
-                    <Languages className="w-3 h-3 text-emerald-400" />
+                  <p className="text-[10px] text-slate-400 flex items-center gap-1.5">
+                    <Languages className="w-3 h-3 text-sky-300" />
                     Outputs a Spanish transcript <span className="text-slate-600">+</span> English translation automatically.
                   </p>
                 </div>
@@ -196,14 +219,14 @@ export default function App() {
               {!isWorking && !done && (
                 <button
                   onClick={handleStart}
-                  className="w-full bg-indigo-600 hover:bg-indigo-500 active:scale-98 text-white font-bold py-2 rounded-lg text-xs transition-all shadow-md shadow-indigo-600/20"
+                  className="w-full bg-gradient-to-r from-sky-400 to-blue-600 hover:from-sky-300 hover:to-blue-500 active:scale-[0.98] text-white font-bold py-2.5 rounded-xl text-xs transition-all glow-azure cursor-pointer"
                 >
                   Transcribe &amp; Translate
                 </button>
               )}
 
               {!isWorking && !done && (
-                <p className="text-[10px] text-slate-500 text-center font-mono">
+                <p className="text-[10px] text-slate-400 text-center font-mono">
                   First run downloads the model once, then works fully offline.
                 </p>
               )}
@@ -213,10 +236,10 @@ export default function App() {
 
         {/* Engine pipeline status */}
         {isWorking && (
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg flex flex-col items-center justify-center text-center py-8 space-y-4">
-            <RefreshCw className="w-8 h-8 text-indigo-400 animate-spin" />
+          <div className="glass rounded-2xl p-5 flex flex-col items-center justify-center text-center py-8 space-y-4">
+            <RefreshCw className="w-8 h-8 text-sky-300 animate-spin" />
             <div>
-              <h3 className="text-sm font-semibold text-slate-200 uppercase tracking-wide">
+              <h3 className="text-sm font-semibold text-slate-100 uppercase tracking-wide">
                 {status === 'transcribing'
                   ? 'Transcribing'
                   : status === 'translating'
@@ -229,15 +252,15 @@ export default function App() {
             </div>
 
             {status === 'loading-model' && modelProgress > 0 && (
-              <div className="w-full max-w-md bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
+              <div className="w-full max-w-md bg-white/[0.04] rounded-full h-2 overflow-hidden border border-white/10">
                 <div
-                  className="bg-gradient-to-r from-indigo-500 to-pink-500 h-full transition-all duration-300"
+                  className="bg-gradient-to-r from-sky-400 to-blue-500 h-full transition-all duration-300"
                   style={{ width: `${modelProgress}%` }}
                 />
               </div>
             )}
 
-            <p className="text-[10px] text-slate-500 font-mono">
+            <p className="text-[10px] text-slate-400 font-mono">
               Everything runs locally — your audio never leaves this device.
             </p>
           </div>
@@ -246,7 +269,7 @@ export default function App() {
         {/* Player + canvas + editor (after transcription) */}
         {done && (
           <>
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-lg space-y-3">
+            <div className="glass rounded-2xl p-4 space-y-3">
               <AudioCanvas
                 duration={duration}
                 currentTime={currentTime}
@@ -262,20 +285,20 @@ export default function App() {
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => seek(0)}
-                    className="p-2 bg-slate-950 border border-slate-800 rounded-full hover:bg-slate-800 hover:text-white transition-colors active:scale-90"
+                    className="p-2 bg-white/[0.04] border border-white/10 rounded-full hover:bg-white/10 hover:text-white transition-colors active:scale-90 cursor-pointer"
                     title="Restart"
                   >
                     <RotateCcw className="w-4 h-4 text-slate-300" />
                   </button>
                   <button
                     onClick={togglePlay}
-                    className="p-3 bg-indigo-600 text-white rounded-full hover:bg-indigo-500 hover:scale-105 active:scale-95 transition-all shadow-md shadow-indigo-600/35"
+                    className="p-3 bg-gradient-to-br from-sky-400 to-blue-600 text-white rounded-full hover:scale-105 active:scale-95 transition-all glow-azure cursor-pointer"
                   >
                     {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
                   </button>
                 </div>
 
-                <div className="flex items-center gap-1 text-[10px] bg-indigo-950/40 text-indigo-400 border border-indigo-900/60 rounded px-2 py-0.5 font-mono">
+                <div className="flex items-center gap-1 text-[10px] bg-sky-500/10 text-sky-300 border border-sky-400/20 rounded-full px-2 py-0.5 font-mono">
                   <CheckCircle className="w-3.5 h-3.5" /> ES + EN
                 </div>
               </div>
@@ -309,7 +332,7 @@ export default function App() {
       </main>
 
       {/* Info footer */}
-      <footer className="text-[10px] text-slate-600 text-center py-1.5 border-t border-slate-900 mt-auto flex items-center justify-center gap-1 font-mono">
+      <footer className="relative z-10 text-[10px] text-slate-500 text-center py-1.5 mt-auto flex items-center justify-center gap-1 font-mono">
         <Info className="w-3 h-3 text-slate-500" /> On-Device Spanish Whisper &bull; Offline &bull; No Server
       </footer>
     </div>

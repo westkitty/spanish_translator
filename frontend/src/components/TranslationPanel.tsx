@@ -15,7 +15,7 @@ export function TranslationPanel({ translation, currentTime, onSeek }: Translati
   }
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-lg">
+    <div className="glass rounded-2xl p-4">
       <div className="flex items-center gap-2 border-b border-slate-800 pb-3 mb-3">
         <Languages className="w-4 h-4 text-emerald-400" />
         <h2 className="text-sm font-semibold tracking-wide text-slate-200">

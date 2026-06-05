@@ -69,7 +69,7 @@ export function CaptionEditor({
   };
 
   return (
-    <div className="flex flex-col bg-slate-900 border border-slate-800 rounded-xl p-4 flex-grow h-0 min-h-[300px] shadow-lg">
+    <div className="flex flex-col glass rounded-2xl p-4 flex-grow h-0 min-h-[300px]">
       {/* Header controls for virtualization configuration */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3 mb-4">
         <div>
