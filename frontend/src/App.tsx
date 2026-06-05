@@ -182,6 +182,22 @@ export default function App() {
     return () => window.clearTimeout(t);
   }, [captions, translation, done, save]);
 
+  // Re-run the same file with (possibly) different settings — returns to the
+  // options screen, keeping the file loaded. Existing edits will be replaced.
+  const handleRerun = () => {
+    const confirmed = window.confirm(
+      'Re-run this file? The current transcript, translation, and edits will be replaced.'
+    );
+    if (!confirmed) return;
+
+    pause();
+    seek(0);
+    projectBaseRef.current = null;
+    pendingSaveRef.current = false;
+    resetHistory();
+    reset();
+  };
+
   const handleOpenProject = async (id: string) => {
     const p = await open(id);
     if (!p) return;
@@ -367,6 +383,20 @@ export default function App() {
                 <p className="text-[10px] text-slate-400 text-center font-mono">
                   First run downloads the model once, then works fully offline.
                 </p>
+              )}
+
+              {done && (
+                <div className="rounded-xl border border-amber-400/20 bg-amber-500/10 p-3 space-y-2">
+                  <p className="text-[11px] text-amber-100">
+                    Re-run keeps this file selected so you can change the model or options. It will replace the current transcript, translation, and edits.
+                  </p>
+                  <button
+                    onClick={handleRerun}
+                    className="w-full bg-white/[0.04] border border-amber-300/30 hover:bg-amber-400/10 text-amber-100 font-semibold py-2 rounded-xl text-xs transition-colors cursor-pointer"
+                  >
+                    Re-run with new settings
+                  </button>
+                </div>
               )}
             </div>
           )}
