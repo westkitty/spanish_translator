@@ -316,14 +316,14 @@ export default function App() {
   const handleOpenProject = async (id: string) => {
     const p = await open(id);
     if (!p) return;
+    
+    pause();
+    setSrc(null);
+    
     const restored = new File([p.audioBlob], `${p.name}.audio`, {
       type: p.audioBlob.type || 'audio/*',
     });
-    setFile(restored);
-    clearDecodedAudio();
-    setSelectedRange(null);
-    setSelectRegionMode(false);
-    setSilences([]);
+    
     projectBaseRef.current = {
       id: p.id,
       name: p.name,
@@ -332,10 +332,11 @@ export default function App() {
       durationSec: p.durationSec,
       audioBlob: p.audioBlob,
     };
+    
     pendingSaveRef.current = false;
     originalRef.current = p.words;
-    setUndoStack([]);
-    setRedoStack([]);
+    
+    setFile(restored);
     loadResult(p.words, p.translation);
     setShowLibrary(false);
   };

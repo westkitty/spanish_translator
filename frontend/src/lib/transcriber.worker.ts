@@ -58,20 +58,35 @@ function getPipeline(model: WhisperModel): Promise<any> {
   return p;
 }
 
-interface RawChunk {
-  text: string;
-  timestamp: [number, number | null];
-}
 
 function toItems(output: any): TimedItem[] {
-  const chunks: RawChunk[] = output?.chunks ?? [];
+  if (!output) return [];
+  
+  const chunks: any[] = output.chunks ?? (Array.isArray(output) ? output : []);
+  
   return chunks
-    .filter((c) => c.text && c.text.trim().length > 0)
-    .map((c) => ({
-      text: c.text.trim(),
-      start: c.timestamp?.[0] ?? 0,
-      end: c.timestamp?.[1] ?? c.timestamp?.[0] ?? 0,
-    }));
+    .filter((c) => c && (c.text || c.word))
+    .map((c) => {
+      const textVal = (c.text ?? c.word ?? '').trim();
+      
+      let start = 0;
+      let end = 0;
+      
+      if (Array.isArray(c.timestamp)) {
+        start = c.timestamp[0] ?? 0;
+        end = c.timestamp[1] ?? start;
+      } else if (c.start !== undefined) {
+        start = c.start;
+        end = c.end ?? start;
+      }
+      
+      return {
+        text: textVal,
+        start: start,
+        end: end
+      };
+    })
+    .filter((item) => item.text.length > 0);
 }
 
 self.addEventListener('message', async (event: MessageEvent<IncomingMessage>) => {
