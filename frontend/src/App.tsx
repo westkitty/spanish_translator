@@ -25,12 +25,15 @@ import { WelcomeScreen } from './components/WelcomeScreen';
 import { FaqModal } from './components/FaqModal';
 import { ProgressPanel } from './components/ProgressPanel';
 import { LibraryModal } from './components/LibraryModal';
+import { AdvancedOptions } from './components/AdvancedOptions';
 import { newProjectId, type StoredProject } from './lib/db';
 import type { WhisperModel } from './lib/transcriber.worker';
 
 export default function App() {
   const [file, setFile] = useState<File | null>(null);
   const [model, setModel] = useState<WhisperModel>('Xenova/whisper-base');
+  const [vocab, setVocab] = useState('');
+  const [highAccuracy, setHighAccuracy] = useState(false);
   const [showWelcome, setShowWelcome] = useState(true);
   const [showFaq, setShowFaq] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
@@ -90,7 +93,7 @@ export default function App() {
     if (!file) return;
     pendingSaveRef.current = true;
     // Always produces both: a Spanish transcript and an English translation.
-    run(file, { model, language: 'spanish' });
+    run(file, { model, language: 'spanish', prompt: vocab.trim() || undefined, highAccuracy });
   };
 
   // Save a freshly-completed run as a new project (once), then autosave edits.
@@ -272,6 +275,12 @@ export default function App() {
                     <Languages className="w-3 h-3 text-sky-300" />
                     Outputs a Spanish transcript <span className="text-slate-600">+</span> English translation automatically.
                   </p>
+                  <AdvancedOptions
+                    vocab={vocab}
+                    onVocabChange={setVocab}
+                    highAccuracy={highAccuracy}
+                    onHighAccuracyChange={setHighAccuracy}
+                  />
                 </div>
               )}
 

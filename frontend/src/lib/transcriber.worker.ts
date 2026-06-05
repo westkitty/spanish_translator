@@ -29,6 +29,7 @@ interface RunMessage {
   model: WhisperModel;
   language: string; // source language of the audio, e.g. 'spanish'
   prompt?: string; // optional vocabulary hint
+  highAccuracy?: boolean; // beam search vs greedy
 }
 interface CancelMessage {
   type: 'cancel';
@@ -101,6 +102,7 @@ self.addEventListener('message', async (event: MessageEvent<IncomingMessage>) =>
       }
 
       const slice = sliceSamples(msg.audio, w);
+      const beams = msg.highAccuracy ? { num_beams: 5 } : {};
 
       // Pass 1 — transcript (Spanish), word-level timestamps.
       self.postMessage({ type: 'status', status: 'transcribing' });
@@ -111,6 +113,7 @@ self.addEventListener('message', async (event: MessageEvent<IncomingMessage>) =>
         return_timestamps: 'word',
         chunk_length_s: 30,
         stride_length_s: 5,
+        ...beams,
         ...(msg.prompt ? { prompt: msg.prompt } : {}),
       });
       txPerWindow.push(toItems(txOutput));
@@ -135,6 +138,7 @@ self.addEventListener('message', async (event: MessageEvent<IncomingMessage>) =>
         return_timestamps: true,
         chunk_length_s: 30,
         stride_length_s: 5,
+        ...beams,
       });
       trPerWindow.push(toItems(trOutput));
       self.postMessage({

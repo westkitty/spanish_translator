@@ -40,6 +40,7 @@ export interface RunOptions {
   model: WhisperModel;
   language?: string;
   prompt?: string;
+  highAccuracy?: boolean;
 }
 
 export function useTranscriber() {
@@ -167,6 +168,7 @@ export function useTranscriber() {
           model: opts.model,
           language: opts.language ?? 'spanish',
           prompt: opts.prompt,
+          highAccuracy: opts.highAccuracy,
         },
         [samples.buffer]
       );
