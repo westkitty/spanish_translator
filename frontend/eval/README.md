@@ -46,6 +46,12 @@ hypotheses you produce **with the actual app**, on the actual target.
 Run the suite, change one thing (encoder dtype, model tier, a decoding flag),
 re-export hypotheses, run again. Keep a note of aggregate WER/CER per config.
 
+## Regression gate
+
+`npm run eval:gate` runs with `--gate 0.25` and exits non-zero if aggregate WER
+exceeds 25%. Use it as a release check. `example-*` cases (marked `*`) are demos
+and are excluded from the aggregate and the gate.
+
 ## Building a good fixture set
 
 Aim for 8–12 clips spanning: clean studio speech, phone/field noise, fast vs

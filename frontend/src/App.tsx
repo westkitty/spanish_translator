@@ -33,6 +33,7 @@ import { AdvancedOptions } from './components/AdvancedOptions';
 import type { Sentence } from './lib/punctuation';
 import { newProjectId, type StoredProject } from './lib/db';
 import { decodeAudioFile, extractWavClip } from './lib/audio';
+import { deriveGlossaryRules, mergeGlossaryText } from './lib/glossary';
 import { findSilences, type SilenceRange } from './lib/vad';
 import { saveBlobFile, saveTextFile } from './lib/fileSave';
 import { getStoredFlag, setStoredFlag } from './lib/storage';
@@ -56,6 +57,7 @@ export default function App() {
   const [selectedRange, setSelectedRange] = useState<{ start: number; end: number } | null>(null);
   const [inputMode, setInputMode] = useState<'file' | 'record'>('file');
   const [silences, setSilences] = useState<SilenceRange[]>([]);
+  const [learnedMsg, setLearnedMsg] = useState<string | null>(null);
 
   const {
     status,
@@ -104,6 +106,19 @@ export default function App() {
   };
   const handleRevert = () => {
     if (originalRef.current) editCaptions(originalRef.current);
+  };
+  // Correction feedback loop: turn the edits the user made to this transcript
+  // into glossary rules so the same fixes auto-apply on future runs.
+  const handleTeachCorrections = () => {
+    const learned = deriveGlossaryRules(originalRef.current ?? [], captions);
+    if (learned.length === 0) {
+      setLearnedMsg('No new corrections to remember yet.');
+      return;
+    }
+    setVocab((v) => mergeGlossaryText(v, learned));
+    setLearnedMsg(
+      `Remembered ${learned.length} correction${learned.length === 1 ? '' : 's'} for next time.`
+    );
   };
   const replaceAll = (find: string, replace: string): number => {
     const re = new RegExp(find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
@@ -805,6 +820,19 @@ export default function App() {
                 </p>
               </div>
             </div>
+
+            {originalRef.current !== null && originalRef.current !== captions && (
+              <div className="flex items-center justify-between gap-2 px-1">
+                <button
+                  onClick={handleTeachCorrections}
+                  className="text-[11px] font-medium text-sky-300 hover:text-sky-200 cursor-pointer transition-colors"
+                  title="Save your edits as reusable corrections (applied automatically next time)"
+                >
+                  Remember my corrections
+                </button>
+                {learnedMsg && <span className="text-[10px] text-slate-500">{learnedMsg}</span>}
+              </div>
+            )}
 
             <TranscriptView
               captions={captions}

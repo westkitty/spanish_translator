@@ -71,11 +71,31 @@ Branch: `feat/accuracy-improvements`. Each phase is one (or more) commits.
 - [x] chrF translation metric — `src/lib/chrf.ts` (+tests); harness scores
       `referenceTranslation` vs `hypothesisTranslation` (or `hypotheses/<id>.en.txt`)
 
-### Phase 5 — Long-term maintenance
-- [ ] Correction → glossary feedback loop
-- [ ] Low-confidence clip export for correction
-- [ ] Spanish punctuation / diacritic restoration
-- [ ] Regression gate (`npm run eval -- --gate <wer>`) wired into release
+### Phase 5 — Long-term maintenance  ✅
+- [x] Correction → glossary feedback loop — `deriveGlossaryRules` +
+      `mergeGlossaryText` (glossary.ts, +tests); "Remember my corrections" button
+      turns the user's edits into reusable glossary rules
+- [x] Spanish punctuation restoration — `spanishPunctuation.ts`
+      (`restoreInvertedMarks`, +tests) wired into `buildSentences` (¿/¡)
+- [x] Regression gate — `npm run eval:gate` (`--gate 0.25`); `example-*` cases
+      are excluded so the gate runs on real fixtures only
+- [~] Deferred: low-confidence clip export (depends on the deferred per-word
+      confidence; arbitrary-region clip export already exists), and
+      diacritic *restoration* via a model (offline-heavy; the inverted-mark rules
+      cover the most common Spanish-specific gap).
+
+## Status: all five phases shipped on `feat/accuracy-improvements`.
+Pure logic is fully unit-tested (107 tests). The inference path (quantization
+behavior, WebGPU-in-WebView, Opus-MT output, decoding flags) must be verified
+**in the app on the target device** — populate `eval/cases/` and run
+`npm run eval` to make that verification quantitative.
+
+### Suggested release checklist
+1. `npm test` green, `npm run build` clean.
+2. Transcribe the eval clips in-app; export Spanish + English; drop into
+   `eval/hypotheses/<id>.txt` / `<id>.en.txt`.
+3. `npm run eval:gate` — aggregate WER under threshold; chrF not regressed.
+4. `npx cap sync android && (cd android && ./gradlew assembleRelease)`.
 
 ## Validation note
 The TypeScript build + Vitest cover structure and all pure logic. The actual

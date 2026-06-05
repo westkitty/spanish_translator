@@ -5,6 +5,7 @@
 
 import type { CaptionWord } from '../components/CaptionEditor';
 import { segmentByGaps, type SilenceRange } from './vad';
+import { restoreInvertedMarks } from './spanishPunctuation';
 
 export interface Sentence {
   id: string;
@@ -35,6 +36,8 @@ export function buildSentences(
     const raw = current.map((w) => w.text).join(' ').trim();
     let text = capitalize(raw);
     if (!SENTENCE_END.test(text)) text += '.';
+    // Restore the Spanish opening mark (¿/¡) that Whisper omits.
+    text = restoreInvertedMarks(text);
     sentences.push({
       id: `sent-${sentences.length}`,
       text,

@@ -115,6 +115,57 @@ export function applyGlossaryToText(text: string, rules: GlossaryRule[]): string
   return out.join(' ');
 }
 
+interface IdentifiedWord {
+  id: string;
+  text: string;
+}
+
+function bareCore(text: string): string {
+  return splitAffixes(text).core;
+}
+
+/**
+ * Derive correction rules by diffing the original transcript against the user's
+ * edits (paired by word id). Each changed word becomes a `from -> to` rule so
+ * the same fix can be auto-applied on future runs — the correction feedback loop.
+ */
+export function deriveGlossaryRules(
+  original: IdentifiedWord[],
+  edited: IdentifiedWord[]
+): GlossaryRule[] {
+  const editedById = new Map(edited.map((w) => [w.id, w]));
+  const seen = new Set<string>();
+  const rules: GlossaryRule[] = [];
+
+  for (const orig of original) {
+    const ed = editedById.get(orig.id);
+    if (!ed) continue;
+    const from = bareCore(orig.text).trim();
+    const to = bareCore(ed.text).trim();
+    if (!from || !to || from === to) continue;
+    const key = foldKey(from);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rules.push({ from, to });
+  }
+  return rules;
+}
+
+/** Append derived rules to existing glossary text, skipping any `from` already present. */
+export function mergeGlossaryText(existing: string, rules: GlossaryRule[]): string {
+  const present = new Set(parseGlossary(existing).map((r) => foldKey(r.from)));
+  const additions: string[] = [];
+  for (const r of rules) {
+    const key = foldKey(r.from);
+    if (present.has(key)) continue;
+    present.add(key);
+    additions.push(`${r.from} -> ${r.to}`);
+  }
+  if (additions.length === 0) return existing;
+  const base = existing.trim();
+  return base ? `${base}\n${additions.join('\n')}` : additions.join('\n');
+}
+
 interface TimedWord {
   text: string;
   start: number;

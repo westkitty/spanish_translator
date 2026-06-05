@@ -93,13 +93,18 @@ for (const c of cases) {
     continue;
   }
   const s = scoreTranscript(c.reference, c.hypothesis, opts);
-  totalEdits += s.substitutions + s.deletions + s.insertions;
-  totalRefWords += s.refWords;
-  totalCharEdits += Math.round(s.cer * s.refChars);
-  totalRefChars += s.refChars;
-  scored++;
+  // `example-*` cases are documentation of the scoring output; they don't count
+  // toward the aggregate or the regression gate.
+  const isExample = c.id.startsWith('example');
+  if (!isExample) {
+    totalEdits += s.substitutions + s.deletions + s.insertions;
+    totalRefWords += s.refWords;
+    totalCharEdits += Math.round(s.cer * s.refChars);
+    totalRefChars += s.refChars;
+    scored++;
+  }
   console.log(
-    `${pad(c.id, 16)}${pad(pct(s.wer), 10)}${pad(pct(s.cer), 10)}` +
+    `${pad(c.id + (isExample ? '*' : ''), 16)}${pad(pct(s.wer), 10)}${pad(pct(s.cer), 10)}` +
       `${pad(`${s.substitutions}/${s.deletions}/${s.insertions}`, 14)}${s.refWords}`
   );
 }
@@ -111,7 +116,7 @@ console.log(`${pad('AGGREGATE', 16)}${pad(pct(aggWer), 10)}${pad(pct(aggCer), 10
 console.log('='.repeat(64));
 console.log(
   `Scored ${scored} clip(s), ${pending} pending. ` +
-    `${totalRefWords} reference words.\n`
+    `${totalRefWords} reference words.  (* = demo, excluded from aggregate/gate)\n`
 );
 
 // Optional translation quality (chrF) for cases that supply English references.
