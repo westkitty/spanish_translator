@@ -178,6 +178,15 @@ export function useTranscriber() {
     workerRef.current?.postMessage({ type: 'cancel' });
   }, []);
 
+  // Load a previously-saved result straight into the "done" view.
+  const loadResult = useCallback((words: CaptionWord[], trans: Translation | null) => {
+    setCaptions(words);
+    setTranslation(trans);
+    setProgress(null);
+    setError(null);
+    setStatus('done');
+  }, []);
+
   const reset = useCallback(() => {
     setStatus('idle');
     setCaptions([]);
@@ -188,5 +197,5 @@ export function useTranscriber() {
     etaRef.current = null;
   }, []);
 
-  return { status, modelFiles, captions, translation, progress, error, run, cancel, reset, setCaptions };
+  return { status, modelFiles, captions, translation, progress, error, run, cancel, loadResult, reset, setCaptions };
 }

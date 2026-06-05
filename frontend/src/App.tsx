@@ -11,9 +11,12 @@ import {
   Cpu,
   Languages,
   HelpCircle,
+  Library,
 } from 'lucide-react';
+import { useRef } from 'react';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { useTranscriber } from './hooks/useTranscriber';
+import { useProjects } from './hooks/useProjects';
 import { AudioCanvas } from './components/AudioCanvas';
 import { CaptionEditor } from './components/CaptionEditor';
 import { CaptionExport } from './components/CaptionExport';
@@ -21,6 +24,8 @@ import { TranslationPanel } from './components/TranslationPanel';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { FaqModal } from './components/FaqModal';
 import { ProgressPanel } from './components/ProgressPanel';
+import { LibraryModal } from './components/LibraryModal';
+import { newProjectId, type StoredProject } from './lib/db';
 import type { WhisperModel } from './lib/transcriber.worker';
 
 export default function App() {
@@ -28,9 +33,17 @@ export default function App() {
   const [model, setModel] = useState<WhisperModel>('Xenova/whisper-base');
   const [showWelcome, setShowWelcome] = useState(true);
   const [showFaq, setShowFaq] = useState(false);
+  const [showLibrary, setShowLibrary] = useState(false);
 
-  const { status, modelFiles, captions, translation, progress, error, run, cancel, reset, setCaptions } =
+  const { status, modelFiles, captions, translation, progress, error, run, cancel, loadResult, reset, setCaptions } =
     useTranscriber();
+
+  const { projects, save, open, remove } = useProjects();
+
+  // Base record for the active project (audio + identity); words/translation are
+  // merged in on autosave. Null until a run completes or a project is opened.
+  const projectBaseRef = useRef<Omit<StoredProject, 'words' | 'translation' | 'updatedAt'> | null>(null);
+  const pendingSaveRef = useRef(false);
 
   const {
     isPlaying,
@@ -61,20 +74,74 @@ export default function App() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       setFile(e.target.files[0]);
+      projectBaseRef.current = null;
       reset();
     }
   };
 
   const handleReset = () => {
     setFile(null);
+    projectBaseRef.current = null;
     reset();
     setSrc(null);
   };
 
   const handleStart = () => {
     if (!file) return;
+    pendingSaveRef.current = true;
     // Always produces both: a Spanish transcript and an English translation.
     run(file, { model, language: 'spanish' });
+  };
+
+  // Save a freshly-completed run as a new project (once), then autosave edits.
+  useEffect(() => {
+    if (!done || !pendingSaveRef.current || !file || captions.length === 0) return;
+    pendingSaveRef.current = false;
+    const durationSec = Math.max(
+      0,
+      ...captions.map((w) => w.end),
+      ...(translation?.segments.map((s) => s.end) ?? [0])
+    );
+    const base = {
+      id: newProjectId(),
+      name: file.name.replace(/\.[^/.]+$/, ''),
+      createdAt: Date.now(),
+      model,
+      durationSec,
+      audioBlob: file as Blob,
+    };
+    projectBaseRef.current = base;
+    save({ ...base, words: captions, translation, updatedAt: Date.now() });
+  }, [done, file, captions, translation, model, save]);
+
+  // Autosave edits to the active project (debounced).
+  useEffect(() => {
+    const base = projectBaseRef.current;
+    if (!done || !base) return;
+    const t = window.setTimeout(() => {
+      save({ ...base, words: captions, translation, updatedAt: Date.now() });
+    }, 800);
+    return () => window.clearTimeout(t);
+  }, [captions, translation, done, save]);
+
+  const handleOpenProject = async (id: string) => {
+    const p = await open(id);
+    if (!p) return;
+    const restored = new File([p.audioBlob], `${p.name}.audio`, {
+      type: p.audioBlob.type || 'audio/*',
+    });
+    setFile(restored);
+    projectBaseRef.current = {
+      id: p.id,
+      name: p.name,
+      createdAt: p.createdAt,
+      model: p.model,
+      durationSec: p.durationSec,
+      audioBlob: p.audioBlob,
+    };
+    pendingSaveRef.current = false;
+    loadResult(p.words, p.translation);
+    setShowLibrary(false);
   };
 
   // Aggregate model-download progress into a single percentage.
@@ -110,6 +177,15 @@ export default function App() {
       {/* FAQ */}
       <FaqModal open={showFaq} onClose={() => setShowFaq(false)} />
 
+      {/* Saved transcripts library */}
+      <LibraryModal
+        open={showLibrary}
+        onClose={() => setShowLibrary(false)}
+        projects={projects}
+        onOpenProject={handleOpenProject}
+        onDeleteProject={remove}
+      />
+
       {/* Header bar */}
       <header className="relative z-10 glass rounded-2xl px-3 py-2.5 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
@@ -124,10 +200,13 @@ export default function App() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 bg-sky-500/10 border border-sky-400/20 rounded-full px-2.5 py-1 text-[9px] font-mono text-sky-300">
-            <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-ping"></span>
-            ON-DEVICE
-          </div>
+          <button
+            onClick={() => setShowLibrary(true)}
+            aria-label="Open saved transcripts"
+            className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+          >
+            <Library className="w-5 h-5" />
+          </button>
           <button
             onClick={() => setShowFaq(true)}
             aria-label="Open FAQ"
