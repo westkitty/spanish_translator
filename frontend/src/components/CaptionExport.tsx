@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { FileText, Code, Clipboard, Check } from 'lucide-react';
+import { FileText, Captions, Code, Table, Languages, Clipboard, Check } from 'lucide-react';
 import { CaptionWord } from './CaptionEditor';
 import type { Translation } from '../hooks/useTranscriber';
+import { EXPORT_FORMATS, toTxt, type ExportFormat } from '../lib/exporters';
 
 interface TranscriptExportProps {
   captions: CaptionWord[];
@@ -9,21 +10,26 @@ interface TranscriptExportProps {
   fileName?: string;
 }
 
+const ICONS: Record<string, typeof FileText> = {
+  txt: FileText,
+  srt: Captions,
+  vtt: Captions,
+  bilingual: Languages,
+  csv: Table,
+  json: Code,
+};
+
 export function CaptionExport({ captions, translation, fileName = 'transcript' }: TranscriptExportProps) {
   const [copied, setCopied] = useState(false);
+  const disabled = captions.length === 0;
+  const input = { words: captions, translation: translation ?? null };
 
-  const spanishText = captions.map((w) => w.text).join(' ');
-  const englishText = translation?.text ?? '';
-
-  // Trigger file download
-  const triggerDownload = (content: string, mimeType: string, extension: string) => {
-    const blob = new Blob([content], { type: mimeType });
+  const triggerDownload = (content: string, mime: string, extension: string) => {
+    const blob = new Blob([content], { type: mime });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    
-    // Clean file name
-    const safeName = fileName.replace(/\.[^/.]+$/, "");
+    const safeName = fileName.replace(/\.[^/.]+$/, '');
     link.download = `${safeName}.${extension}`;
     document.body.appendChild(link);
     link.click();
@@ -31,49 +37,15 @@ export function CaptionExport({ captions, translation, fileName = 'transcript' }
     URL.revokeObjectURL(url);
   };
 
-  const buildPlainText = () => {
-    let content = `=== Spanish Transcript ===\n${spanishText}`;
-    if (englishText) {
-      content += `\n\n=== English Translation ===\n${englishText}`;
-    }
-    return content;
+  const handleExport = (fmt: ExportFormat) => {
+    if (disabled) return;
+    triggerDownload(fmt.build(input), fmt.mime, fmt.extension);
   };
 
-  const handleExportTXT = () => {
-    triggerDownload(buildPlainText(), 'text/plain;charset=utf-8', 'txt');
-  };
-
-  const handleExportJSON = () => {
-    const payload = {
-      meta: {
-        exportedAt: new Date().toISOString(),
-        totalWords: captions.length,
-        hasTranslation: Boolean(translation),
-      },
-      transcript: {
-        language: 'spanish',
-        text: spanishText,
-        words: captions.map((w) => ({ text: w.text, start: w.start, end: w.end })),
-      },
-      translation: translation
-        ? {
-            language: 'english',
-            text: translation.text,
-            segments: translation.segments.map((s) => ({
-              text: s.text,
-              start: s.start,
-              end: s.end,
-            })),
-          }
-        : null,
-    };
-    triggerDownload(JSON.stringify(payload, null, 2), 'application/json;charset=utf-8', 'json');
-  };
-
-  const handleCopyTranscript = async () => {
-    if (captions.length === 0) return;
+  const handleCopy = async () => {
+    if (disabled) return;
     try {
-      await navigator.clipboard.writeText(buildPlainText());
+      await navigator.clipboard.writeText(toTxt(input));
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
@@ -81,65 +53,55 @@ export function CaptionExport({ captions, translation, fileName = 'transcript' }
     }
   };
 
-  const disabled = captions.length === 0;
-
   return (
     <div className="glass rounded-2xl p-4 w-full">
-      <h3 className="text-xs font-semibold tracking-wide text-slate-400 mb-3 uppercase">
-        Export Transcript
-      </h3>
+      <h3 className="text-xs font-semibold tracking-wide text-slate-300 mb-1 uppercase">Save your transcript</h3>
+      <p className="text-[10px] text-slate-400 mb-3">Pick a format — subtitles for video, a spreadsheet for data, or plain text.</p>
 
       <div className="grid grid-cols-3 gap-2.5">
-        <button
-          onClick={handleExportTXT}
-          disabled={disabled}
-          className={`flex flex-col items-center justify-center py-2.5 px-2 rounded-lg border text-xs font-medium transition-all duration-200 active:scale-95 cursor-pointer ${
-            disabled
-              ? 'bg-slate-800/20 border-slate-800 text-slate-600 cursor-not-allowed'
-              : 'bg-indigo-600/10 border-indigo-500/30 text-indigo-400 hover:bg-indigo-600/20 hover:border-indigo-400/50'
-          }`}
-        >
-          <FileText className="w-5 h-5 mb-1.5" />
-          <span>TXT Document</span>
-        </button>
-
-        <button
-          onClick={handleExportJSON}
-          disabled={disabled}
-          className={`flex flex-col items-center justify-center py-2.5 px-2 rounded-lg border text-xs font-medium transition-all duration-200 active:scale-95 cursor-pointer ${
-            disabled
-              ? 'bg-slate-800/20 border-slate-800 text-slate-600 cursor-not-allowed'
-              : 'bg-indigo-600/10 border-indigo-500/30 text-indigo-400 hover:bg-indigo-600/20 hover:border-indigo-400/50'
-          }`}
-        >
-          <Code className="w-5 h-5 mb-1.5" />
-          <span>Timed JSON</span>
-        </button>
-
-        <button
-          onClick={handleCopyTranscript}
-          disabled={disabled}
-          className={`flex flex-col items-center justify-center py-2.5 px-2 rounded-lg border text-xs font-medium transition-all duration-200 active:scale-95 cursor-pointer ${
-            disabled
-              ? 'bg-slate-800/20 border-slate-800 text-slate-600 cursor-not-allowed'
-              : copied
-              ? 'bg-emerald-600/10 border-emerald-500/40 text-emerald-400'
-              : 'bg-indigo-600/10 border-indigo-500/30 text-indigo-400 hover:bg-indigo-600/20 hover:border-indigo-400/50'
-          }`}
-        >
-          {copied ? (
-            <>
-              <Check className="w-5 h-5 mb-1.5 text-emerald-400 animate-pulse" />
-              <span>Copied!</span>
-            </>
-          ) : (
-            <>
-              <Clipboard className="w-5 h-5 mb-1.5" />
-              <span>Copy Text</span>
-            </>
-          )}
-        </button>
+        {EXPORT_FORMATS.map((fmt) => {
+          const Icon = ICONS[fmt.id] ?? FileText;
+          return (
+            <button
+              key={fmt.id}
+              onClick={() => handleExport(fmt)}
+              disabled={disabled}
+              className={`flex flex-col items-center justify-center py-2.5 px-2 rounded-xl border text-[11px] font-medium transition-all duration-200 active:scale-95 cursor-pointer ${
+                disabled
+                  ? 'bg-white/[0.02] border-white/5 text-slate-600 cursor-not-allowed'
+                  : 'bg-sky-500/10 border-sky-400/20 text-sky-200 hover:bg-sky-500/20 hover:border-sky-400/40'
+              }`}
+              title={`.${fmt.extension}`}
+            >
+              <Icon className="w-5 h-5 mb-1.5" />
+              <span className="text-center leading-tight">{fmt.label}</span>
+              <span className="text-[8px] text-slate-500 font-mono mt-0.5">.{fmt.extension}</span>
+            </button>
+          );
+        })}
       </div>
+
+      <button
+        onClick={handleCopy}
+        disabled={disabled}
+        className={`mt-2.5 w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border text-[11px] font-medium transition-all duration-200 active:scale-95 cursor-pointer ${
+          disabled
+            ? 'bg-white/[0.02] border-white/5 text-slate-600 cursor-not-allowed'
+            : copied
+            ? 'bg-emerald-500/10 border-emerald-400/40 text-emerald-300'
+            : 'bg-white/[0.04] border-white/10 text-slate-200 hover:bg-white/10'
+        }`}
+      >
+        {copied ? (
+          <>
+            <Check className="w-4 h-4" /> Copied to clipboard!
+          </>
+        ) : (
+          <>
+            <Clipboard className="w-4 h-4" /> Copy transcript + translation
+          </>
+        )}
+      </button>
     </div>
   );
 }
