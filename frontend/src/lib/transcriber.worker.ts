@@ -12,6 +12,7 @@ import { preprocessForWhisper } from './audiodsp';
 import { findSilences } from './vad';
 import { collapseRepeatedPhrases } from './dehallucinate';
 import { resolveBackend, detectWebGPU, type WhisperModel } from './models';
+import { buildSentences } from './punctuation';
 
 env.allowLocalModels = false;
 const wasm = env.backends?.onnx?.wasm;
@@ -30,6 +31,58 @@ export type { WhisperModel };
 const SAMPLE_RATE = 16000;
 const WINDOW_SEC = 28;
 const OVERLAP_SEC = 4;
+
+// Dedicated Spanish→English translator. Replaces Whisper's weak built-in
+// `translate` task with a purpose-built Marian/OPUS-MT model — better fluency
+// and adequacy, and it removes a whole inference pass per window (≈2× faster).
+// Runs on WASM at q8 (small, robust; MT tolerates q8 well) regardless of the
+// ASR backend.
+const TRANSLATION_MODEL = 'Xenova/opus-mt-es-en';
+const SENTENCE_BATCH = 8;
+let translatorPromise: Promise<any> | null = null;
+
+function getTranslator(): Promise<any> {
+  if (!translatorPromise) {
+    translatorPromise = pipeline('translation', TRANSLATION_MODEL, {
+      dtype: 'q8',
+      device: 'wasm',
+      progress_callback: (progress: any) => {
+        self.postMessage({ type: 'model-progress', progress });
+      },
+    });
+  }
+  return translatorPromise;
+}
+
+interface Segment {
+  id: string;
+  text: string;
+  start: number;
+  end: number;
+}
+
+// Translate Spanish sentences to English, preserving each sentence's timing.
+async function translateSentences(
+  sentences: { text: string; start: number; end: number }[]
+): Promise<{ segments: Segment[]; text: string }> {
+  if (sentences.length === 0) return { segments: [], text: '' };
+
+  const translator = await getTranslator();
+  const segments: Segment[] = [];
+
+  for (let i = 0; i < sentences.length; i += SENTENCE_BATCH) {
+    if (cancelRequested) break;
+    const batch = sentences.slice(i, i + SENTENCE_BATCH);
+    const outputs: any = await translator(batch.map((s) => s.text));
+    const arr = Array.isArray(outputs) ? outputs : [outputs];
+    batch.forEach((s, j) => {
+      const text = (arr[j]?.translation_text ?? '').trim();
+      segments.push({ id: `seg-${segments.length}`, text, start: s.start, end: s.end });
+    });
+  }
+
+  return { segments, text: segments.map((s) => s.text).join(' ') };
+}
 
 interface RunMessage {
   type: 'run';
@@ -131,11 +184,11 @@ self.addEventListener('message', async (event: MessageEvent<IncomingMessage>) =>
     });
 
     const windows = planWindows(audio.length, SAMPLE_RATE, WINDOW_SEC, OVERLAP_SEC);
-    // Two passes (transcribe + translate) per window = total work units.
-    self.postMessage({ type: 'plan', windowCount: windows.length, passes: 2 });
+    // One transcription pass per window now; translation is a single dedicated
+    // step at the end (Opus-MT over reconstructed sentences), not per window.
+    self.postMessage({ type: 'plan', windowCount: windows.length, passes: 1 });
 
     const txPerWindow: TimedItem[][] = [];
-    const trPerWindow: TimedItem[][] = [];
 
     for (const w of windows) {
       if (cancelRequested) {
@@ -169,41 +222,17 @@ self.addEventListener('message', async (event: MessageEvent<IncomingMessage>) =>
         windowIndex: w.index,
         wallMs: performance.now() - t0,
       });
+    }
 
-      if (cancelRequested) {
-        self.postMessage({ type: 'cancelled' });
-        return;
-      }
-
-      // Pass 2 — English translation, segment-level timestamps.
-      self.postMessage({ type: 'status', status: 'translating' });
-      t0 = performance.now();
-      const trOutput: any = await transcriber(slice, {
-        language: msg.language,
-        task: 'translate',
-        return_timestamps: true,
-        chunk_length_s: 30,
-        stride_length_s: 5,
-        ...beams,
-        ...antiRepeat,
-      });
-      trPerWindow.push(toItems(trOutput));
-      self.postMessage({
-        type: 'window',
-        pass: 'translate',
-        windowIndex: w.index,
-        wallMs: performance.now() - t0,
-      });
+    if (cancelRequested) {
+      self.postMessage({ type: 'cancelled' });
+      return;
     }
 
     // Snap window handoffs to silences, then repair any verbatim repetition
     // loops that survived across seams.
     const cuts = silenceAwareCuts(windows, silences, 2);
     const wordItems = collapseRepeatedPhrases(mergeWindowed(txPerWindow, windows, cuts), {
-      maxRepeats: 2,
-      maxPhraseLen: 6,
-    });
-    const segItems = collapseRepeatedPhrases(mergeWindowed(trPerWindow, windows, cuts), {
       maxRepeats: 2,
       maxPhraseLen: 6,
     });
@@ -215,19 +244,28 @@ self.addEventListener('message', async (event: MessageEvent<IncomingMessage>) =>
       start: it.start + offsetSec,
       end: it.end + offsetSec,
     }));
-    const segments = segItems.map((it, idx) => ({
-      id: `seg-${idx}`,
-      text: it.text,
-      start: it.start + offsetSec,
-      end: it.end + offsetSec,
+
+    // Reconstruct Spanish sentences from the word stream, then translate each to
+    // English with Opus-MT — better than Whisper's translate task and timed to
+    // the source sentences. (Sentence grouping uses punctuation + pauses.)
+    self.postMessage({ type: 'status', status: 'translating' });
+    const sentences = buildSentences(words).map((s) => ({
+      text: s.text,
+      start: s.start,
+      end: s.end,
     }));
-    const translationText = segments.map((s) => s.text).join(' ');
+    const translation = await translateSentences(sentences);
+
+    if (cancelRequested) {
+      self.postMessage({ type: 'cancelled' });
+      return;
+    }
 
     self.postMessage({
       type: 'result',
       words,
       text: words.map((w) => w.text).join(' '),
-      translation: { segments, text: translationText },
+      translation,
     });
   } catch (err: any) {
     self.postMessage({ type: 'error', message: err?.message ?? String(err) });

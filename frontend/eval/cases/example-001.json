@@ -2,5 +2,7 @@
   "id": "example-001",
   "audio": "(example — no audio; demonstrates the scoring output)",
   "reference": "el rápido zorro marrón salta sobre el perro perezoso",
-  "hypothesis": "el rapido zorro marron salta sobre un perro perezoso"
+  "hypothesis": "el rapido zorro marron salta sobre un perro perezoso",
+  "referenceTranslation": "the quick brown fox jumps over the lazy dog",
+  "hypothesisTranslation": "the fast brown fox jumps over a lazy dog"
 }

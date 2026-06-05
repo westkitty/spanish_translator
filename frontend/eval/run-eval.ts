@@ -23,6 +23,7 @@ import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { scoreTranscript } from '../src/lib/wer.ts';
+import { chrf } from '../src/lib/chrf.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const casesDir = join(here, 'cases');
@@ -33,6 +34,9 @@ interface EvalCase {
   audio?: string;
   reference: string;
   hypothesis?: string;
+  /** Optional English ground-truth + the app's translation, for chrF scoring. */
+  referenceTranslation?: string;
+  hypothesisTranslation?: string;
 }
 
 const args = process.argv.slice(2);
@@ -49,6 +53,8 @@ function loadCases(): EvalCase[] {
       // Allow an external hypotheses/<id>.txt to override the inline field.
       const ext = join(hypDir, `${c.id}.txt`);
       if (existsSync(ext)) c.hypothesis = readFileSync(ext, 'utf8').trim();
+      const extEn = join(hypDir, `${c.id}.en.txt`);
+      if (existsSync(extEn)) c.hypothesisTranslation = readFileSync(extEn, 'utf8').trim();
       return c;
     })
     .sort((a, b) => a.id.localeCompare(b.id));
@@ -107,6 +113,23 @@ console.log(
   `Scored ${scored} clip(s), ${pending} pending. ` +
     `${totalRefWords} reference words.\n`
 );
+
+// Optional translation quality (chrF) for cases that supply English references.
+const translationCases = cases.filter(
+  (c) => c.referenceTranslation && c.hypothesisTranslation
+);
+if (translationCases.length > 0) {
+  console.log('Translation quality (chrF, higher is better)');
+  console.log('-'.repeat(40));
+  let chrfSum = 0;
+  for (const c of translationCases) {
+    const score = chrf(c.hypothesisTranslation!, c.referenceTranslation!);
+    chrfSum += score;
+    console.log(`${pad(c.id, 24)}${(score * 100).toFixed(1)}`);
+  }
+  console.log('-'.repeat(40));
+  console.log(`${pad('MEAN chrF', 24)}${((chrfSum / translationCases.length) * 100).toFixed(1)}\n`);
+}
 
 if (gate !== null && aggWer > gate) {
   console.error(`FAIL: aggregate WER ${pct(aggWer)} exceeds gate ${pct(gate)}.`);

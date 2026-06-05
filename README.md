@@ -44,13 +44,15 @@ Chromium WebView / desktop Chrome, Firefox, Safari, Edge).
 Total installed footprint is roughly **~100 MB** with the Balanced tier (app +
 ONNX runtime + base model), more with larger tiers.
 
-Each run does **two passes on the same loaded model** (no extra download, no extra
-storage):
+Each run produces both outputs:
 
-- **Pass 1 — Spanish transcript:** `task: transcribe` → word-level Spanish text that
+- **Spanish transcript:** Whisper `task: transcribe` → word-level Spanish text that
   drives the timeline and editor.
-- **Pass 2 — English translation:** `task: translate` → segment-level English shown
-  in a read-only panel and included in every export.
+- **English translation:** the finished Spanish transcript is split into sentences
+  and translated by a dedicated on-device **Opus-MT (`Xenova/opus-mt-es-en`)**
+  model — more fluent and adequate than Whisper's built-in `translate` task, and
+  it removes a whole inference pass per window (≈2× faster transcription). The
+  translator (~40 MB, q8) downloads once and is cached like the Whisper model.
 
 ## Project structure
 

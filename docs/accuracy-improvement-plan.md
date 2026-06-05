@@ -61,11 +61,15 @@ Branch: `feat/accuracy-improvements`. Each phase is one (or more) commits.
       timings confirming acceptable speed. (On-device WebGPU-in-WebView support
       also needs confirming on the target hardware.)
 
-### Phase 4 — Translation quality
-- [ ] Opus-MT `Xenova/opus-mt-es-en` as a dedicated NMT pipeline
-- [ ] Remove the per-window Whisper translate pass (also ~2× faster)
-- [ ] Translate reconstructed sentences, not raw windows
-- [ ] chrF/BLEU translation eval
+### Phase 4 — Translation quality  ✅
+- [x] Opus-MT `Xenova/opus-mt-es-en` as a dedicated translation pipeline
+      (q8/WASM, cached separately) in the worker
+- [x] Removed the per-window Whisper `translate` pass — one transcription pass
+      per window now (≈2× faster); `plan` reports `passes: 1`
+- [x] Translate reconstructed sentences (reused `buildSentences`), preserving
+      each sentence's timing for the segment list
+- [x] chrF translation metric — `src/lib/chrf.ts` (+tests); harness scores
+      `referenceTranslation` vs `hypothesisTranslation` (or `hypotheses/<id>.en.txt`)
 
 ### Phase 5 — Long-term maintenance
 - [ ] Correction → glossary feedback loop
