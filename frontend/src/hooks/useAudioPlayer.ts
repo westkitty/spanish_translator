@@ -5,9 +5,12 @@ export function useAudioPlayer() {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [src, setSrc] = useState<string | null>(null);
+  const [playbackRate, setPlaybackRateState] = useState(1);
+  const [loopRange, setLoopRangeState] = useState<{ start: number; end: number } | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const playPromiseRef = useRef<Promise<void> | null>(null);
+  const loopRangeRef = useRef<{ start: number; end: number } | null>(null);
 
   // Initialize Audio instance once
   useEffect(() => {
@@ -15,6 +18,10 @@ export function useAudioPlayer() {
     audioRef.current = audio;
 
     const onTimeUpdate = () => {
+      const loop = loopRangeRef.current;
+      if (loop && audio.currentTime >= loop.end) {
+        audio.currentTime = loop.start;
+      }
       setCurrentTime(audio.currentTime);
     };
 
@@ -58,6 +65,16 @@ export function useAudioPlayer() {
       audioRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    loopRangeRef.current = loopRange;
+  }, [loopRange]);
+
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.playbackRate = playbackRate;
+    }
+  }, [playbackRate]);
 
   // Update source when src state changes
   useEffect(() => {
@@ -128,12 +145,31 @@ export function useAudioPlayer() {
     setCurrentTime(boundedTime);
   }, [duration]);
 
+  const setPlaybackRate = useCallback((rate: number) => {
+    setPlaybackRateState(rate);
+  }, []);
+
+  const setLoopRange = useCallback((range: { start: number; end: number }) => {
+    const start = Math.max(0, Math.min(range.start, range.end));
+    const end = Math.max(start, Math.max(range.start, range.end));
+    setLoopRangeState(end - start >= 0.5 ? { start, end } : null);
+  }, []);
+
+  const clearLoopRange = useCallback(() => {
+    setLoopRangeState(null);
+  }, []);
+
   return {
     src,
     isPlaying,
     currentTime,
     duration,
+    playbackRate,
+    loopRange,
     setSrc,
+    setPlaybackRate,
+    setLoopRange,
+    clearLoopRange,
     play,
     pause,
     togglePlay,

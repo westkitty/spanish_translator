@@ -30,6 +30,7 @@ interface RunMessage {
   language: string; // source language of the audio, e.g. 'spanish'
   prompt?: string; // optional vocabulary hint
   highAccuracy?: boolean; // beam search vs greedy
+  offsetSec?: number;
 }
 interface CancelMessage {
   type: 'cancel';
@@ -151,18 +152,19 @@ self.addEventListener('message', async (event: MessageEvent<IncomingMessage>) =>
 
     const wordItems = mergeWindowed(txPerWindow, windows);
     const segItems = mergeWindowed(trPerWindow, windows);
+    const offsetSec = msg.offsetSec ?? 0;
 
     const words = wordItems.map((it, idx) => ({
       id: `word-${idx}`,
       text: it.text,
-      start: it.start,
-      end: it.end,
+      start: it.start + offsetSec,
+      end: it.end + offsetSec,
     }));
     const segments = segItems.map((it, idx) => ({
       id: `seg-${idx}`,
       text: it.text,
-      start: it.start,
-      end: it.end,
+      start: it.start + offsetSec,
+      end: it.end + offsetSec,
     }));
     const translationText = segments.map((s) => s.text).join(' ');
 

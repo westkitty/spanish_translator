@@ -5,6 +5,7 @@ import { Modal } from './Modal';
 interface FaqModalProps {
   open: boolean;
   onClose: () => void;
+  onShowWelcome: () => void;
 }
 
 interface FaqItem {
@@ -78,10 +79,16 @@ function FaqRow({ item }: { item: FaqItem }) {
   );
 }
 
-export function FaqModal({ open, onClose }: FaqModalProps) {
+export function FaqModal({ open, onClose, onShowWelcome }: FaqModalProps) {
   return (
     <Modal open={open} onClose={onClose} title="Frequently Asked Questions" labelledBy="faq-title">
       <div className="space-y-2">
+        <button
+          onClick={onShowWelcome}
+          className="w-full rounded-xl border border-sky-400/20 bg-sky-500/10 px-3.5 py-2.5 text-left text-[12px] font-semibold text-sky-100 hover:bg-sky-500/15 transition-colors cursor-pointer"
+        >
+          Show the welcome screen again
+        </button>
         {FAQS.map((item) => (
           <FaqRow key={item.q} item={item} />
         ))}

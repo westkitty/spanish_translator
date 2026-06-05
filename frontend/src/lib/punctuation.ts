@@ -4,6 +4,7 @@
 // view is comfortable to read. Pure + deterministic.
 
 import type { CaptionWord } from '../components/CaptionEditor';
+import { segmentByGaps, type SilenceRange } from './vad';
 
 export interface Sentence {
   id: string;
@@ -19,7 +20,13 @@ function capitalize(text: string): string {
   return text.length === 0 ? text : text[0].toUpperCase() + text.slice(1);
 }
 
-export function buildSentences(words: CaptionWord[], gapSec = 0.6): Sentence[] {
+export function buildSentences(
+  words: CaptionWord[],
+  silencesOrGap: SilenceRange[] | number = [],
+  gapSec = 0.6
+): Sentence[] {
+  const silences = Array.isArray(silencesOrGap) ? silencesOrGap : [];
+  const effectiveGapSec = typeof silencesOrGap === 'number' ? silencesOrGap : gapSec;
   const sentences: Sentence[] = [];
   let current: CaptionWord[] = [];
 
@@ -38,16 +45,20 @@ export function buildSentences(words: CaptionWord[], gapSec = 0.6): Sentence[] {
     current = [];
   };
 
-  for (let i = 0; i < words.length; i++) {
-    const w = words[i];
-    if (i > 0) {
-      const gap = w.start - words[i - 1].end;
-      const prevEndsSentence = SENTENCE_END.test(words[i - 1].text);
-      if (gap >= gapSec || prevEndsSentence) flush();
+  const groups = silences.length > 0 ? segmentByGaps(words, silences) : [words];
+
+  for (const group of groups) {
+    for (let i = 0; i < group.length; i++) {
+      const w = group[i];
+      if (i > 0) {
+        const gap = w.start - group[i - 1].end;
+        const prevEndsSentence = SENTENCE_END.test(group[i - 1].text);
+        if (gap >= effectiveGapSec || prevEndsSentence) flush();
+      }
+      current.push(w);
     }
-    current.push(w);
+    flush();
   }
-  flush();
 
   return sentences;
 }
