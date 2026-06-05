@@ -14,6 +14,8 @@ interface CaptionEditorProps {
   onUpdateWord: (id: string, text: string) => void;
   onPause: () => void;
   onSeek: (time: number) => void;
+  /** When true, render only the editor body (no outer glass card/header). */
+  embedded?: boolean;
 }
 
 export function CaptionEditor({
@@ -22,6 +24,7 @@ export function CaptionEditor({
   onUpdateWord,
   onPause,
   onSeek,
+  embedded = false,
 }: CaptionEditorProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -69,9 +72,9 @@ export function CaptionEditor({
   };
 
   return (
-    <div className="flex flex-col glass rounded-2xl p-4 flex-grow h-0 min-h-[300px]">
+    <div className={embedded ? 'flex flex-col flex-grow h-0 min-h-[220px]' : 'flex flex-col glass rounded-2xl p-4 flex-grow h-0 min-h-[300px]'}>
       {/* Header controls for virtualization configuration */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3 mb-4">
+      <div className={`flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3 mb-4 ${embedded ? 'hidden' : ''}`}>
         <div>
           <h2 className="text-sm font-semibold tracking-wide text-slate-200">
             INLINE TRANSCRIPT EDITOR

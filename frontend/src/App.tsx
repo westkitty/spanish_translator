@@ -18,7 +18,8 @@ import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { useTranscriber } from './hooks/useTranscriber';
 import { useProjects } from './hooks/useProjects';
 import { AudioCanvas } from './components/AudioCanvas';
-import { CaptionEditor } from './components/CaptionEditor';
+import { TranscriptView } from './components/TranscriptView';
+import type { CaptionWord } from './components/CaptionEditor';
 import { CaptionExport } from './components/CaptionExport';
 import { TranslationPanel } from './components/TranslationPanel';
 import { WelcomeScreen } from './components/WelcomeScreen';
@@ -42,6 +43,55 @@ export default function App() {
     useTranscriber();
 
   const { projects, save, open, remove } = useProjects();
+
+  // Edit history for undo/redo + revert-to-original.
+  const [undoStack, setUndoStack] = useState<CaptionWord[][]>([]);
+  const [redoStack, setRedoStack] = useState<CaptionWord[][]>([]);
+  const originalRef = useRef<CaptionWord[] | null>(null);
+
+  const editCaptions = (next: CaptionWord[]) => {
+    setUndoStack((s) => [...s, captions]);
+    setRedoStack([]);
+    setCaptions(next);
+  };
+  const handleUndo = () => {
+    setUndoStack((s) => {
+      if (s.length === 0) return s;
+      setRedoStack((r) => [captions, ...r]);
+      setCaptions(s[s.length - 1]);
+      return s.slice(0, -1);
+    });
+  };
+  const handleRedo = () => {
+    setRedoStack((r) => {
+      if (r.length === 0) return r;
+      setUndoStack((s) => [...s, captions]);
+      setCaptions(r[0]);
+      return r.slice(1);
+    });
+  };
+  const handleRevert = () => {
+    if (originalRef.current) editCaptions(originalRef.current);
+  };
+  const replaceAll = (find: string, replace: string): number => {
+    const re = new RegExp(find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    let count = 0;
+    const next = captions.map((w) => {
+      const matches = w.text.match(re);
+      if (matches) {
+        count += matches.length;
+        return { ...w, text: w.text.replace(re, replace) };
+      }
+      return w;
+    });
+    if (count > 0) editCaptions(next);
+    return count;
+  };
+  const resetHistory = () => {
+    setUndoStack([]);
+    setRedoStack([]);
+    originalRef.current = null;
+  };
 
   // Base record for the active project (audio + identity); words/translation are
   // merged in on autosave. Null until a run completes or a project is opened.
@@ -78,6 +128,7 @@ export default function App() {
     if (e.target.files && e.target.files.length > 0) {
       setFile(e.target.files[0]);
       projectBaseRef.current = null;
+      resetHistory();
       reset();
     }
   };
@@ -85,6 +136,7 @@ export default function App() {
   const handleReset = () => {
     setFile(null);
     projectBaseRef.current = null;
+    resetHistory();
     reset();
     setSrc(null);
   };
@@ -114,6 +166,9 @@ export default function App() {
       audioBlob: file as Blob,
     };
     projectBaseRef.current = base;
+    originalRef.current = captions;
+    setUndoStack([]);
+    setRedoStack([]);
     save({ ...base, words: captions, translation, updatedAt: Date.now() });
   }, [done, file, captions, translation, model, save]);
 
@@ -143,6 +198,9 @@ export default function App() {
       audioBlob: p.audioBlob,
     };
     pendingSaveRef.current = false;
+    originalRef.current = p.words;
+    setUndoStack([]);
+    setRedoStack([]);
     loadResult(p.words, p.translation);
     setShowLibrary(false);
   };
@@ -362,16 +420,21 @@ export default function App() {
               </div>
             </div>
 
-            <CaptionEditor
+            <TranscriptView
               captions={captions}
               currentTime={currentTime}
-              onUpdateWord={(id, newText) => {
-                setCaptions((prev) =>
-                  prev.map((w) => (w.id === id ? { ...w, text: newText } : w))
-                );
-              }}
+              onUpdateWord={(id, newText) =>
+                editCaptions(captions.map((w) => (w.id === id ? { ...w, text: newText } : w)))
+              }
               onPause={pause}
               onSeek={seek}
+              onReplaceAll={replaceAll}
+              onUndo={handleUndo}
+              onRedo={handleRedo}
+              onRevert={handleRevert}
+              canUndo={undoStack.length > 0}
+              canRedo={redoStack.length > 0}
+              canRevert={originalRef.current !== null && originalRef.current !== captions}
             />
 
             <TranslationPanel
