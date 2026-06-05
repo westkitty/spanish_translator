@@ -8,7 +8,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "eval": "node eval/run-eval.ts"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

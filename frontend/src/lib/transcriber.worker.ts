@@ -8,6 +8,7 @@
 import { pipeline, env } from '@huggingface/transformers';
 import { planWindows, sliceSamples } from './chunker';
 import { mergeWindowed, type TimedItem } from './merge';
+import { preprocessForWhisper } from './audiodsp';
 
 env.allowLocalModels = false;
 const wasm = env.backends?.onnx?.wasm;
@@ -46,8 +47,15 @@ const pipelines = new Map<WhisperModel, Promise<any>>();
 function getPipeline(model: WhisperModel): Promise<any> {
   let p = pipelines.get(model);
   if (!p) {
+    // Per-module dtype. Whisper's ENCODER is extremely sensitive to quantization
+    // — q8 on the encoder was the single biggest hidden accuracy loss. We keep
+    // the encoder at full precision (fp32, the only precision with reliable
+    // kernels on the ONNX-Runtime WASM/CPU backend) and quantize only the
+    // far-more-tolerant decoder to q8. Costs ~30 MB more on first download for a
+    // meaningful WER drop. (On a future WebGPU path, fp16/q4f16 become viable.)
+    // Ref: https://huggingface.co/docs/transformers.js/guides/dtypes
     p = pipeline('automatic-speech-recognition', model, {
-      dtype: 'q8',
+      dtype: { encoder_model: 'fp32', decoder_model_merged: 'q8' },
       device: 'wasm',
       progress_callback: (progress: any) => {
         self.postMessage({ type: 'model-progress', progress });
@@ -104,7 +112,12 @@ self.addEventListener('message', async (event: MessageEvent<IncomingMessage>) =>
     self.postMessage({ type: 'status', status: 'loading-model' });
     const transcriber = await getPipeline(msg.model);
 
-    const windows = planWindows(msg.audio.length, SAMPLE_RATE, WINDOW_SEC, OVERLAP_SEC);
+    // Pre-inference clean-up: DC removal + high-pass (drop sub-80 Hz rumble) +
+    // loudness normalization, so quiet/rumbly recordings reach Whisper at the
+    // speech level it was trained on. Pure DSP — see audiodsp.ts.
+    const audio = preprocessForWhisper(msg.audio, SAMPLE_RATE);
+
+    const windows = planWindows(audio.length, SAMPLE_RATE, WINDOW_SEC, OVERLAP_SEC);
     // Two passes (transcribe + translate) per window = total work units.
     self.postMessage({ type: 'plan', windowCount: windows.length, passes: 2 });
 
@@ -117,8 +130,11 @@ self.addEventListener('message', async (event: MessageEvent<IncomingMessage>) =>
         return;
       }
 
-      const slice = sliceSamples(msg.audio, w);
+      const slice = sliceSamples(audio, w);
       const beams = msg.highAccuracy ? { num_beams: 5 } : {};
+      // Block verbatim n-gram loops — Whisper's most common hallucination on
+      // silence/music. Cheap (no extra decode passes) and backend-agnostic.
+      const antiRepeat = { no_repeat_ngram_size: 3 };
 
       // Pass 1 — transcript (Spanish), word-level timestamps.
       self.postMessage({ type: 'status', status: 'transcribing' });
@@ -130,6 +146,7 @@ self.addEventListener('message', async (event: MessageEvent<IncomingMessage>) =>
         chunk_length_s: 30,
         stride_length_s: 5,
         ...beams,
+        ...antiRepeat,
         ...(msg.prompt ? { prompt: msg.prompt } : {}),
       });
       txPerWindow.push(toItems(txOutput));
@@ -155,6 +172,7 @@ self.addEventListener('message', async (event: MessageEvent<IncomingMessage>) =>
         chunk_length_s: 30,
         stride_length_s: 5,
         ...beams,
+        ...antiRepeat,
       });
       trPerWindow.push(toItems(trOutput));
       self.postMessage({
