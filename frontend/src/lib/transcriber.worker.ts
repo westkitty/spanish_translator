@@ -24,25 +24,12 @@ if (wasm) {
 
 export type { WhisperModel };
 
-// WebGPU is only usable if an adapter can actually be acquired — `'gpu' in
-// navigator` is NOT enough (some WebViews expose the property but return a null
-// adapter, which would crash model load). Probed once, asynchronously.
-let webgpuProbe: Promise<boolean> | null = null;
-function webgpuUsable(): Promise<boolean> {
-  if (!webgpuProbe) {
-    webgpuProbe = (async () => {
-      try {
-        const gpu = (navigator as any)?.gpu;
-        if (!gpu?.requestAdapter) return false;
-        const adapter = await gpu.requestAdapter();
-        return !!adapter;
-      } catch {
-        return false;
-      }
-    })();
-  }
-  return webgpuProbe;
-}
+// NOTE: We deliberately run inference on the WASM/CPU backend only. WebGPU inside
+// the Capacitor Android System WebView is unreliable — some devices expose a
+// WebGPU adapter that then produces empty/garbage ONNX output (a finished run
+// with no transcript) or crashes on load. WASM is slower but universally correct,
+// and is what shipped working in v2.5.0. (Re-enable WebGPU only behind real,
+// per-device verification — an adapter existing is not enough.)
 
 const SAMPLE_RATE = 16000;
 const WINDOW_SEC = 28;
@@ -138,14 +125,14 @@ let cancelRequested = false;
 // Typed as `any`: the fully-resolved pipeline union is too large for tsc.
 const pipelines = new Map<WhisperModel, Promise<any>>();
 
-function getPipeline(model: WhisperModel, hasWebGPU: boolean): Promise<any> {
+function getPipeline(model: WhisperModel): Promise<any> {
   let p = pipelines.get(model);
   if (!p) {
-    // Device + quantization policy lives in models.ts. On WASM: fp32 encoder
-    // (the encoder is extremely quantization-sensitive — q8 there was the
-    // biggest hidden accuracy loss) + q8 decoder. On WebGPU: fp16 throughout.
+    // Quantization policy lives in models.ts. WASM/CPU: fp32 encoder (the encoder
+    // is extremely quantization-sensitive — q8 there was the biggest hidden
+    // accuracy loss) + q8 decoder.
     // Ref: https://huggingface.co/docs/transformers.js/guides/dtypes
-    const backend = resolveBackend(model, hasWebGPU);
+    const backend = resolveBackend(model);
     p = pipeline('automatic-speech-recognition', model, {
       dtype: backend.dtype as any,
       device: backend.device,
@@ -202,8 +189,7 @@ self.addEventListener('message', async (event: MessageEvent<IncomingMessage>) =>
 
   try {
     self.postMessage({ type: 'status', status: 'loading-model' });
-    const hasWebGPU = await webgpuUsable();
-    const transcriber = await getPipeline(msg.model, hasWebGPU);
+    const transcriber = await getPipeline(msg.model);
 
     // Pre-inference clean-up: DC removal + high-pass (drop sub-80 Hz rumble) +
     // loudness normalization, so quiet/rumbly recordings reach Whisper at the

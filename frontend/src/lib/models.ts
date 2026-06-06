@@ -20,7 +20,9 @@ export interface ModelTier {
   recommended?: boolean;
 }
 
-// Ordered fast → best.
+// Ordered fast → best. (The WebGPU-only large-v3-turbo tier is intentionally not
+// offered: inference runs on WASM only — see resolveBackend — so a tier that is
+// only practical on WebGPU would be unusably slow.)
 export const MODEL_TIERS: ModelTier[] = [
   {
     id: 'Xenova/whisper-tiny',
@@ -38,52 +40,32 @@ export const MODEL_TIERS: ModelTier[] = [
     blurb: 'Small — noticeably better Spanish; slower (~250 MB).',
     recommended: true,
   },
-  {
-    id: 'onnx-community/whisper-large-v3-turbo',
-    label: 'Best',
-    blurb: 'Large-v3 Turbo — top accuracy. Needs a WebGPU device (large download).',
-    requiresWebGPU: true,
-  },
 ];
 
 export interface BackendChoice {
-  device: 'webgpu' | 'wasm';
-  // `dtype` is passed straight to the Transformers.js pipeline. It is either a
-  // single precision or a per-module map.
-  dtype: 'fp16' | { encoder_model: string; decoder_model_merged: string };
+  device: 'wasm';
+  // `dtype` is passed straight to the Transformers.js pipeline (per-module map).
+  dtype: { encoder_model: string; decoder_model_merged: string };
 }
 
 /**
- * Choose device + quantization for a model.
- *
- * - **WASM/CPU:** keep the quantization-sensitive ENCODER at fp32 (the only
- *   precision with reliable WASM kernels) and quantize the tolerant decoder to
- *   q8. This is the single biggest accuracy fix from Phase 1.
- * - **WebGPU:** fp16 throughout — well-supported on GPU, fast, and far more
- *   accurate than q8, which is what makes the small/turbo tiers practical.
+ * Device + quantization policy. **WASM/CPU only** — WebGPU is intentionally not
+ * used (it produces empty/garbage output or crashes inside the Capacitor Android
+ * WebView; see transcriber.worker.ts). We keep the quantization-sensitive ENCODER
+ * at fp32 (the only precision with reliable WASM kernels) and quantize the
+ * tolerant decoder to q8 — the single biggest accuracy fix, verified to produce
+ * correct output on the WASM backend.
  */
-export function resolveBackend(_model: WhisperModel, hasWebGPU: boolean): BackendChoice {
-  if (hasWebGPU) {
-    return { device: 'webgpu', dtype: 'fp16' };
-  }
+export function resolveBackend(_model: WhisperModel): BackendChoice {
   return { device: 'wasm', dtype: { encoder_model: 'fp32', decoder_model_merged: 'q8' } };
 }
 
-/** True if the current context exposes WebGPU (main thread or worker). */
-export function detectWebGPU(): boolean {
-  return typeof navigator !== 'undefined' && 'gpu' in navigator;
+/** The model tiers users can choose. (All run on WASM.) */
+export function availableTiers(): ModelTier[] {
+  return MODEL_TIERS.filter((t) => !t.requiresWebGPU);
 }
 
-/** Tiers the device can actually run. */
-export function availableTiers(hasWebGPU: boolean): ModelTier[] {
-  return MODEL_TIERS.filter((t) => !t.requiresWebGPU || hasWebGPU);
-}
-
-/**
- * Default tier. We keep `base` as the safe default even on WebGPU until on-device
- * benchmarking confirms `small` is fast enough to promote — flipping this is a
- * one-line change once the eval harness has device numbers.
- */
-export function defaultModel(_hasWebGPU: boolean): WhisperModel {
+/** Default tier — `base` is the safe all-rounder. */
+export function defaultModel(): WhisperModel {
   return 'Xenova/whisper-base';
 }

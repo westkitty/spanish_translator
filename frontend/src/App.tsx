@@ -37,16 +37,15 @@ import { deriveGlossaryRules, mergeGlossaryText } from './lib/glossary';
 import { findSilences, type SilenceRange } from './lib/vad';
 import { saveBlobFile, saveTextFile } from './lib/fileSave';
 import { getStoredFlag, setStoredFlag } from './lib/storage';
-import { availableTiers, defaultModel, detectWebGPU, type WhisperModel } from './lib/models';
+import { availableTiers, defaultModel, type WhisperModel } from './lib/models';
 
 const WELCOME_SEEN_KEY = 'spanish-whisper-seen-welcome';
 const RESULT_TIP_SEEN_KEY = 'spanish-whisper-seen-result-tip';
 
 export default function App() {
   const [file, setFile] = useState<File | null>(null);
-  const [hasWebGPU] = useState(detectWebGPU);
-  const tiers = useMemo(() => availableTiers(hasWebGPU), [hasWebGPU]);
-  const [model, setModel] = useState<WhisperModel>(() => defaultModel(detectWebGPU()));
+  const tiers = useMemo(() => availableTiers(), []);
+  const [model, setModel] = useState<WhisperModel>(() => defaultModel());
   const [vocab, setVocab] = useState('');
   const [highAccuracy, setHighAccuracy] = useState(false);
   const [showWelcome, setShowWelcome] = useState(() => !getStoredFlag(WELCOME_SEEN_KEY));
