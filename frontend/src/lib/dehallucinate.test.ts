@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { collapseRepeatedPhrases } from './dehallucinate';
+import { collapseRepeatedPhrases, sanitizeTranslation } from './dehallucinate';
 
 interface Item {
   text: string;
@@ -45,5 +45,24 @@ describe('collapseRepeatedPhrases', () => {
     const items = ['el', 'gato', 'come', 'pescado'].map((t, i) => it_(t, i));
     const out = collapseRepeatedPhrases(items, { maxRepeats: 2 });
     expect(out.map((x) => x.text)).toEqual(['el', 'gato', 'come', 'pescado']);
+  });
+});
+
+describe('sanitizeTranslation', () => {
+  it('collapses runaway repeated punctuation', () => {
+    expect(sanitizeTranslation('Hello there.....................')).toBe('Hello there.');
+    expect(sanitizeTranslation('What??????')).toBe('What?');
+  });
+  it('collapses runaway repeated words/phrases', () => {
+    expect(sanitizeTranslation('the sun the sun the sun the sun the sun')).toBe('the sun the sun');
+  });
+  it('fixes spaces before punctuation and collapses whitespace', () => {
+    expect(sanitizeTranslation('hi   there .')).toBe('hi there.');
+  });
+  it('leaves clean text untouched', () => {
+    expect(sanitizeTranslation('The cat sat on the mat.')).toBe('The cat sat on the mat.');
+  });
+  it('handles empty input', () => {
+    expect(sanitizeTranslation('')).toBe('');
   });
 });

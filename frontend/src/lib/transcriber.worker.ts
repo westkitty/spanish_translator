@@ -10,8 +10,8 @@ import { planWindows, sliceSamples } from './chunker';
 import { mergeWindowed, silenceAwareCuts, type TimedItem } from './merge';
 import { preprocessForWhisper } from './audiodsp';
 import { findSilences } from './vad';
-import { collapseRepeatedPhrases } from './dehallucinate';
-import { resolveBackend, detectWebGPU, type WhisperModel } from './models';
+import { collapseRepeatedPhrases, sanitizeTranslation } from './dehallucinate';
+import { resolveBackend, type WhisperModel } from './models';
 import { buildSentences } from './punctuation';
 
 env.allowLocalModels = false;
@@ -22,11 +22,27 @@ if (wasm) {
   wasm.numThreads = 1;
 }
 
-// Detected once per worker. WebGPU (when present) unlocks fp16 + the larger
-// tiers at a usable speed; otherwise we fall back to the fp32-encoder WASM path.
-const HAS_WEBGPU = detectWebGPU();
-
 export type { WhisperModel };
+
+// WebGPU is only usable if an adapter can actually be acquired — `'gpu' in
+// navigator` is NOT enough (some WebViews expose the property but return a null
+// adapter, which would crash model load). Probed once, asynchronously.
+let webgpuProbe: Promise<boolean> | null = null;
+function webgpuUsable(): Promise<boolean> {
+  if (!webgpuProbe) {
+    webgpuProbe = (async () => {
+      try {
+        const gpu = (navigator as any)?.gpu;
+        if (!gpu?.requestAdapter) return false;
+        const adapter = await gpu.requestAdapter();
+        return !!adapter;
+      } catch {
+        return false;
+      }
+    })();
+  }
+  return webgpuProbe;
+}
 
 const SAMPLE_RATE = 16000;
 const WINDOW_SEC = 28;
@@ -38,7 +54,6 @@ const OVERLAP_SEC = 4;
 // Runs on WASM at q8 (small, robust; MT tolerates q8 well) regardless of the
 // ASR backend.
 const TRANSLATION_MODEL = 'Xenova/opus-mt-es-en';
-const SENTENCE_BATCH = 8;
 let translatorPromise: Promise<any> | null = null;
 
 function getTranslator(): Promise<any> {
@@ -62,6 +77,14 @@ interface Segment {
 }
 
 // Translate Spanish sentences to English, preserving each sentence's timing.
+//
+// One sentence per call — NOT batched. Batched seq2seq generation runs until the
+// longest sequence in the batch finishes (or max_length), so shorter sentences
+// keep emitting filler tokens that decode as runaway "...."/"????" tails. That
+// made every sentence generate ~max_length tokens: garbage output, ~25× the
+// compute, and enough memory churn to OOM-crash a phone WebView mid-run. Per
+// sentence each sequence stops at its own EOS; we also cap max_new_tokens and
+// block n-gram loops, then sanitize as a last line of defense.
 async function translateSentences(
   sentences: { text: string; start: number; end: number }[]
 ): Promise<{ segments: Segment[]; text: string }> {
@@ -70,15 +93,26 @@ async function translateSentences(
   const translator = await getTranslator();
   const segments: Segment[] = [];
 
-  for (let i = 0; i < sentences.length; i += SENTENCE_BATCH) {
+  for (const s of sentences) {
     if (cancelRequested) break;
-    const batch = sentences.slice(i, i + SENTENCE_BATCH);
-    const outputs: any = await translator(batch.map((s) => s.text));
-    const arr = Array.isArray(outputs) ? outputs : [outputs];
-    batch.forEach((s, j) => {
-      const text = (arr[j]?.translation_text ?? '').trim();
-      segments.push({ id: `seg-${segments.length}`, text, start: s.start, end: s.end });
-    });
+    const srcWords = s.text.split(/\s+/).filter(Boolean).length;
+    // Translations are roughly source-length; cap generously but finitely so a
+    // degenerate decode can never run away.
+    const maxNewTokens = Math.min(256, Math.max(24, srcWords * 3 + 12));
+
+    let text = '';
+    try {
+      const output: any = await translator(s.text, {
+        max_new_tokens: maxNewTokens,
+        no_repeat_ngram_size: 3,
+      });
+      const arr = Array.isArray(output) ? output : [output];
+      text = sanitizeTranslation((arr[0]?.translation_text ?? '').trim());
+    } catch {
+      text = '';
+    }
+
+    segments.push({ id: `seg-${segments.length}`, text, start: s.start, end: s.end });
   }
 
   return { segments, text: segments.map((s) => s.text).join(' ') };
@@ -104,14 +138,14 @@ let cancelRequested = false;
 // Typed as `any`: the fully-resolved pipeline union is too large for tsc.
 const pipelines = new Map<WhisperModel, Promise<any>>();
 
-function getPipeline(model: WhisperModel): Promise<any> {
+function getPipeline(model: WhisperModel, hasWebGPU: boolean): Promise<any> {
   let p = pipelines.get(model);
   if (!p) {
     // Device + quantization policy lives in models.ts. On WASM: fp32 encoder
     // (the encoder is extremely quantization-sensitive — q8 there was the
     // biggest hidden accuracy loss) + q8 decoder. On WebGPU: fp16 throughout.
     // Ref: https://huggingface.co/docs/transformers.js/guides/dtypes
-    const backend = resolveBackend(model, HAS_WEBGPU);
+    const backend = resolveBackend(model, hasWebGPU);
     p = pipeline('automatic-speech-recognition', model, {
       dtype: backend.dtype as any,
       device: backend.device,
@@ -168,7 +202,8 @@ self.addEventListener('message', async (event: MessageEvent<IncomingMessage>) =>
 
   try {
     self.postMessage({ type: 'status', status: 'loading-model' });
-    const transcriber = await getPipeline(msg.model);
+    const hasWebGPU = await webgpuUsable();
+    const transcriber = await getPipeline(msg.model, hasWebGPU);
 
     // Pre-inference clean-up: DC removal + high-pass (drop sub-80 Hz rumble) +
     // loudness normalization, so quiet/rumbly recordings reach Whisper at the

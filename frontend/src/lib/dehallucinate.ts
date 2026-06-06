@@ -86,3 +86,22 @@ export function collapseRepeatedPhrases<T extends TextItem>(
 
   return out;
 }
+
+/**
+ * Clean up a machine-translation string. Defense-in-depth against decoder
+ * degeneration (runaway "...." / "????" tails and repeated word loops) — even
+ * with bounded generation, NMT can occasionally loop, and a phone should never
+ * be shown (or have to store) a multi-hundred-character punctuation tail.
+ */
+export function sanitizeTranslation(text: string): string {
+  if (!text) return text;
+  // Collapse runs of a repeated punctuation/symbol char: "...." -> ".".
+  let out = text.replace(/([^\p{L}\p{N}\s])\1{1,}/gu, '$1');
+  // Collapse runaway repeated words/phrases.
+  const words = out.split(/\s+/).filter(Boolean).map((w) => ({ text: w }));
+  out = collapseRepeatedPhrases(words, { maxRepeats: 2, maxPhraseLen: 6 })
+    .map((w) => w.text)
+    .join(' ');
+  // Tidy spaces before punctuation and collapse whitespace.
+  return out.replace(/\s+([,.;:!?])/g, '$1').replace(/\s+/g, ' ').trim();
+}
