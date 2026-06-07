@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Check, X, RotateCcw } from 'lucide-react';
+import { selectVisibleWords, safePlayhead } from '../lib/visibleWords';
 
 export interface CaptionWord {
   id: string;
@@ -33,13 +34,16 @@ export function CaptionEditor({
 
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  // Time-based virtualization: Filter words within the active viewport
-  const visibleStart = Math.max(0, currentTime + windowOffset);
+  // Time-based virtualization: words within a moving window around the playhead.
+  // The selector sanitizes a non-finite clock and, crucially, never returns empty
+  // when captions exist — a present transcript must never render as blank just
+  // because the audio clock is unusable or the playhead sits in a silent gap.
+  // See lib/visibleWords.ts.
+  const safeTime = safePlayhead(currentTime);
+  const visibleStart = Math.max(0, safeTime + windowOffset);
   const visibleEnd = visibleStart + windowSize;
 
-  const visibleWords = captions.filter(
-    (w) => w.end >= visibleStart && w.start <= visibleEnd
-  );
+  const visibleWords = selectVisibleWords(captions, currentTime, windowSize, windowOffset);
 
   // Focus input when editing starts
   useEffect(() => {

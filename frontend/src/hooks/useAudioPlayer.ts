@@ -22,7 +22,9 @@ export function useAudioPlayer() {
       if (loop && audio.currentTime >= loop.end) {
         audio.currentTime = loop.start;
       }
-      setCurrentTime(audio.currentTime);
+      // Never let a non-finite clock through: a NaN currentTime would silently
+      // hide the entire (time-windowed) transcript downstream.
+      setCurrentTime(Number.isFinite(audio.currentTime) ? audio.currentTime : 0);
     };
 
     const onDurationChange = () => {
@@ -139,8 +141,11 @@ export function useAudioPlayer() {
 
   const seek = useCallback((time: number) => {
     if (!audioRef.current) return;
-    // Bound time within [0, duration]
-    const boundedTime = Math.max(0, Math.min(time, duration));
+    if (!Number.isFinite(time)) return; // ignore NaN seeks (e.g. from an unloaded clock)
+    // Bound time within [0, duration]. `duration` is 0 until metadata loads;
+    // don't let that clamp a valid seek to 0, and never produce a NaN.
+    const upper = Number.isFinite(duration) && duration > 0 ? duration : time;
+    const boundedTime = Math.max(0, Math.min(time, upper));
     audioRef.current.currentTime = boundedTime;
     setCurrentTime(boundedTime);
   }, [duration]);
