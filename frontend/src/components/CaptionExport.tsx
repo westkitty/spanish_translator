@@ -46,8 +46,12 @@ export function CaptionExport({ captions, translation, fileName = 'transcript' }
 
   return (
     <div className="glass rounded-2xl p-4 w-full">
-      <h3 className="text-xs font-semibold tracking-wide text-slate-300 mb-1 uppercase">Save your transcript</h3>
-      <p className="text-[10px] text-slate-400 mb-3">Pick a format — subtitles for video, a spreadsheet for data, or plain text.</p>
+      <h3 className="text-xs font-semibold tracking-wide mb-1 uppercase" style={{ color: 'var(--text-muted)' }}>
+        Save your transcript
+      </h3>
+      <p className="text-[11px] mb-3" style={{ color: 'var(--text-subtle)' }}>
+        Pick a format — subtitles for video, a spreadsheet for data, or plain text.
+      </p>
 
       <div className="grid grid-cols-3 gap-2.5">
         {EXPORT_FORMATS.map((fmt) => {
@@ -57,16 +61,24 @@ export function CaptionExport({ captions, translation, fileName = 'transcript' }
               key={fmt.id}
               onClick={() => handleExport(fmt)}
               disabled={disabled}
-              className={`flex flex-col items-center justify-center py-2.5 px-2 rounded-xl border text-[11px] font-medium transition-all duration-200 active:scale-95 cursor-pointer ${
+              className={`flex flex-col items-center justify-center py-2.5 px-2 rounded-xl border text-[11px] font-medium transition-all duration-200 active:scale-95 cursor-pointer min-h-[44px] ${
                 disabled
-                  ? 'bg-white/[0.02] border-white/5 text-slate-600 cursor-not-allowed'
-                  : 'bg-sky-500/10 border-sky-400/20 text-sky-200 hover:bg-sky-500/20 hover:border-sky-400/40'
+                  ? 'cursor-not-allowed'
+                  : 'hover:opacity-90'
               }`}
+              style={
+                disabled
+                  ? { background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)', color: 'var(--text-subtle)' }
+                  : { background: 'var(--accent-bg)', borderColor: 'var(--accent-border)', color: '#bae6fd' }
+              }
               title={`.${fmt.extension}`}
             >
               <Icon className="w-5 h-5 mb-1.5" />
               <span className="text-center leading-tight">{fmt.label}</span>
-              <span className="text-[8px] text-slate-500 font-mono mt-0.5">.{fmt.extension}</span>
+              {/* Extension label: min 11px so it's legible at tablet distance */}
+              <span className="text-[11px] font-mono mt-0.5" style={{ color: 'var(--text-subtle)' }}>
+                .{fmt.extension}
+              </span>
             </button>
           );
         })}
@@ -75,13 +87,16 @@ export function CaptionExport({ captions, translation, fileName = 'transcript' }
       <button
         onClick={handleCopy}
         disabled={disabled}
-        className={`mt-2.5 w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border text-[11px] font-medium transition-all duration-200 active:scale-95 cursor-pointer ${
-          disabled
-            ? 'bg-white/[0.02] border-white/5 text-slate-600 cursor-not-allowed'
-            : copied
-            ? 'bg-emerald-500/10 border-emerald-400/40 text-emerald-300'
-            : 'bg-white/[0.04] border-white/10 text-slate-200 hover:bg-white/10'
+        className={`mt-2.5 w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border text-[11px] font-medium transition-all duration-200 active:scale-95 cursor-pointer min-h-[44px] ${
+          disabled ? 'cursor-not-allowed' : ''
         }`}
+        style={
+          disabled
+            ? { background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)', color: 'var(--text-subtle)' }
+            : copied
+            ? { background: 'var(--trans-bg)', borderColor: 'var(--trans-border)', color: '#a7f3d0' }
+            : { background: 'rgba(255,255,255,0.04)', borderColor: 'var(--border)', color: 'var(--text)' }
+        }
       >
         {copied ? (
           <>

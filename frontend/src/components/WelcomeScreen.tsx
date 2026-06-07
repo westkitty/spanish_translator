@@ -63,7 +63,7 @@ export function WelcomeScreen({ onStart }: WelcomeScreenProps) {
           <ArrowRight className="w-4 h-4" />
         </button>
 
-        <p className="text-[10px] text-slate-500 mt-3 font-mono">
+        <p className="text-[11px] mt-3 font-mono" style={{ color: 'var(--text-subtle)' }}>
           On-device &bull; Offline &bull; No account
         </p>
       </div>

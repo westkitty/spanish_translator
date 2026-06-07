@@ -75,6 +75,39 @@ export function encodeWav(pcm: Float32Array, sampleRate = WHISPER_SAMPLE_RATE): 
   return new Blob([buffer], { type: 'audio/wav' });
 }
 
+/**
+ * Downsample a Float32 PCM buffer into a normalized peak-amplitude envelope.
+ * Returns `buckets` values in [0, 1] — one per time-slice of the audio — which
+ * AudioCanvas uses to draw the real waveform without keeping the full PCM in
+ * memory after the fact.
+ */
+export function computePeaks(samples: Float32Array, buckets = 800): number[] {
+  const peaks = new Array<number>(buckets).fill(0);
+  const bucketSize = samples.length / buckets;
+
+  for (let b = 0; b < buckets; b++) {
+    const start = Math.floor(b * bucketSize);
+    const end = Math.min(samples.length, Math.floor((b + 1) * bucketSize));
+    let max = 0;
+    for (let i = start; i < end; i++) {
+      const abs = Math.abs(samples[i]);
+      if (abs > max) max = abs;
+    }
+    peaks[b] = max;
+  }
+
+  // Normalize so the loudest bucket = 1.0.
+  let globalMax = 1e-6;
+  for (let i = 0; i < peaks.length; i++) {
+    if (peaks[i] > globalMax) globalMax = peaks[i];
+  }
+  for (let i = 0; i < peaks.length; i++) {
+    peaks[i] = peaks[i] / globalMax;
+  }
+
+  return peaks;
+}
+
 export async function extractWavClip(file: File, startSec: number, endSec: number): Promise<Blob> {
   const decoded = await decodeAudioFile(file);
   const startSample = Math.max(0, Math.floor(Math.min(startSec, endSec) * WHISPER_SAMPLE_RATE));

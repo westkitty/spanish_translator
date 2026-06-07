@@ -34,7 +34,7 @@ export function AdvancedOptions({
       {open && (
         <div className="px-3 pb-3 space-y-3 animate-fade-in">
           <label className="block">
-            <span className="text-[10px] uppercase tracking-wide text-slate-500">
+            <span className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--text-subtle)' }}>
               Corrections &amp; names
             </span>
             <textarea
@@ -44,8 +44,8 @@ export function AdvancedOptions({
               placeholder={'watsap -> WhatsApp\nJosé\nNueva York'}
               className="mt-1 w-full bg-white/[0.04] text-slate-100 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs font-mono focus:border-sky-400 focus:outline-none resize-none placeholder:text-slate-600"
             />
-            <span className="text-[10px] text-slate-500 mt-1 block">
-              One per line. Write <span className="text-slate-300">wrong -&gt; right</span> to fix a
+            <span className="text-[11px] mt-1 block" style={{ color: 'var(--text-subtle)' }}>
+              One per line. Write <span style={{ color: 'var(--text-muted)' }}>wrong -&gt; right</span> to fix a
               word, or just type a name to lock its spelling. Applied after transcribing.
             </span>
           </label>
@@ -53,7 +53,7 @@ export function AdvancedOptions({
           <label className="flex items-center justify-between gap-3 cursor-pointer">
             <span>
               <span className="text-[12px] font-medium text-slate-200 block">Try harder for accuracy</span>
-              <span className="text-[10px] text-slate-500">Slower, but can catch more.</span>
+              <span className="text-[11px]" style={{ color: 'var(--text-subtle)' }}>Slower, but can catch more.</span>
             </span>
             <input
               type="checkbox"

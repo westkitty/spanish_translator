@@ -52,11 +52,14 @@ export function TranscriptView({
 
   const iconBtn = (enabled: boolean) =>
     `p-1.5 rounded-lg transition-colors ${
-      enabled ? 'text-slate-300 hover:text-white hover:bg-white/10 cursor-pointer' : 'text-slate-700 cursor-not-allowed'
+      enabled ? 'hover:text-white hover:bg-white/10 cursor-pointer' : 'cursor-not-allowed opacity-30'
     }`;
 
+  const iconBtnStyle = (enabled: boolean) =>
+    ({ color: enabled ? 'var(--text-muted)' : 'var(--text-subtle)' }) as const;
+
   return (
-    <div className="flex flex-col glass rounded-2xl p-4 flex-grow h-0 min-h-[320px]">
+    <div className="flex flex-col glass rounded-2xl p-4 flex-grow h-0 min-h-[320px] lg:flex-none lg:h-auto lg:min-h-[420px]">
       {/* Toolbar */}
       <div className="flex items-center gap-2 border-b border-white/10 pb-3 mb-3 flex-wrap">
         <div className="flex items-center gap-1 bg-white/[0.03] rounded-lg p-0.5">
@@ -69,16 +72,16 @@ export function TranscriptView({
         </div>
 
         <div className="ml-auto flex items-center gap-0.5">
-          <button onClick={() => setShowFind((v) => !v)} className={iconBtn(true)} aria-label="Find and replace">
+          <button onClick={() => setShowFind((v) => !v)} className={iconBtn(true)} style={iconBtnStyle(true)} aria-label="Find and replace">
             <Search className="w-4 h-4" />
           </button>
-          <button onClick={onUndo} disabled={!canUndo} className={iconBtn(canUndo)} aria-label="Undo">
+          <button onClick={onUndo} disabled={!canUndo} className={iconBtn(canUndo)} style={iconBtnStyle(canUndo)} aria-label="Undo">
             <Undo2 className="w-4 h-4" />
           </button>
-          <button onClick={onRedo} disabled={!canRedo} className={iconBtn(canRedo)} aria-label="Redo">
+          <button onClick={onRedo} disabled={!canRedo} className={iconBtn(canRedo)} style={iconBtnStyle(canRedo)} aria-label="Redo">
             <Redo2 className="w-4 h-4" />
           </button>
-          <button onClick={onRevert} disabled={!canRevert} className={iconBtn(canRevert)} aria-label="Revert to original" title="Revert to original">
+          <button onClick={onRevert} disabled={!canRevert} className={iconBtn(canRevert)} style={iconBtnStyle(canRevert)} aria-label="Revert to original" title="Revert to original">
             <History className="w-4 h-4" />
           </button>
         </div>
@@ -106,7 +109,7 @@ export function TranscriptView({
             Replace all
           </button>
           {lastCount !== null && (
-            <span className="text-[10px] text-slate-400 font-mono w-full">
+            <span className="text-[11px] font-mono w-full" style={{ color: 'var(--text-subtle)' }}>
               {lastCount === 0 ? 'No matches found' : `Replaced ${lastCount} occurrence${lastCount === 1 ? '' : 's'}`}
             </span>
           )}
@@ -124,9 +127,9 @@ export function TranscriptView({
           embedded
         />
       ) : (
-        <div className="flex-grow overflow-y-auto pr-1 space-y-3 select-text">
+        <div className="flex-grow overflow-y-auto pr-1 space-y-3 select-text lg:overflow-visible lg:flex-none">
           {sentences.length === 0 ? (
-            <p className="text-xs text-slate-500 text-center py-6">No transcript yet.</p>
+            <p className="text-xs text-center py-6" style={{ color: 'var(--text-subtle)' }}>No transcript yet.</p>
           ) : (
             sentences.map((s) => {
               const active = currentTime >= s.start && currentTime <= s.end;
@@ -134,9 +137,12 @@ export function TranscriptView({
                 <div
                   key={s.id}
                   onClick={() => onSeek(s.start)}
-                  className={`group cursor-pointer px-2.5 py-1.5 rounded-lg text-sm leading-relaxed transition-colors ${
-                    active ? 'bg-sky-600/20 text-sky-100 border border-sky-400/30' : 'text-slate-300 hover:bg-white/[0.04] border border-transparent'
-                  }`}
+                  className="group cursor-pointer px-2.5 py-1.5 rounded-lg text-sm leading-relaxed transition-colors border"
+                  style={
+                    active
+                      ? { background: 'var(--accent-bg)', color: '#bae6fd', borderColor: 'var(--accent-border)' }
+                      : { color: 'var(--text-muted)', borderColor: 'transparent' }
+                  }
                 >
                   <p>{s.text}</p>
                   {onExportClip && (
@@ -145,7 +151,10 @@ export function TranscriptView({
                         event.stopPropagation();
                         onExportClip(s);
                       }}
-                      className="mt-1.5 inline-flex items-center gap-1 text-[10px] text-slate-500 hover:text-sky-200 transition-colors cursor-pointer"
+                      className="mt-1.5 inline-flex items-center gap-1 text-[11px] transition-colors cursor-pointer min-h-[44px] px-1"
+                      style={{ color: 'var(--text-subtle)' }}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--accent-bright)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-subtle)')}
                     >
                       <Download className="w-3 h-3" /> Export clip
                     </button>

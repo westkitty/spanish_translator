@@ -1,9 +1,16 @@
 import React, { useRef, useEffect, useState } from 'react';
+import type { SilenceRange } from '../lib/vad';
 
 interface AudioCanvasProps {
   duration: number;
   currentTime: number;
   isPlaying: boolean;
+  /** Real peak-amplitude envelope [0..1], one value per bucket.
+   *  Computed by computePeaks() in lib/audio.ts and passed down from App.
+   *  When empty the canvas shows a low-amplitude placeholder until peaks arrive. */
+  peaks?: number[];
+  /** VAD silence ranges — rendered as dimmed regions so the user can see gaps. */
+  silences?: SilenceRange[];
   selection?: { start: number; end: number } | null;
   selectionMode?: boolean;
   onSeek: (time: number) => void;
@@ -13,7 +20,9 @@ interface AudioCanvasProps {
 export function AudioCanvas({
   duration,
   currentTime,
-  isPlaying,
+  isPlaying: _isPlaying,
+  peaks = [],
+  silences = [],
   selection = null,
   selectionMode = false,
   onSeek,
@@ -21,28 +30,12 @@ export function AudioCanvas({
 }: AudioCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animationFrameId = useRef<number | null>(null);
-  const phaseRef = useRef(0);
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [draftSelection, setDraftSelection] = useState<{ start: number; end: number } | null>(null);
-
-  // Generate a deterministic waveform shape
-  const [amplitudes] = useState(() => {
-    const arr = [];
-    let current = 0.5;
-    for (let i = 0; i < 150; i++) {
-      // Random walk with bounds
-      current += (Math.random() - 0.5) * 0.25;
-      if (current < 0.1) current = 0.15;
-      if (current > 0.9) current = 0.85;
-      arr.push(current);
-    }
-    return arr;
-  });
 
   const timeFromClientX = (clientX: number) => {
     const canvas = canvasRef.current;
     if (!canvas || duration <= 0) return 0;
-
     const rect = canvas.getBoundingClientRect();
     const touchX = clientX - rect.left;
     const progress = Math.max(0, Math.min(touchX / rect.width, 1));
@@ -53,7 +46,6 @@ export function AudioCanvas({
     if (duration <= 0) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     setIsScrubbing(true);
-
     const time = timeFromClientX(e.clientX);
     if (selectionMode) {
       setDraftSelection({ start: time, end: time });
@@ -64,10 +56,9 @@ export function AudioCanvas({
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!isScrubbing || duration <= 0) return;
-
     const time = timeFromClientX(e.clientX);
     if (selectionMode) {
-      setDraftSelection((current) => (current ? { ...current, end: time } : { start: time, end: time }));
+      setDraftSelection((cur) => (cur ? { ...cur, end: time } : { start: time, end: time }));
     } else {
       onSeek(time);
     }
@@ -83,7 +74,6 @@ export function AudioCanvas({
         onSeek(start);
       }
     }
-
     setIsScrubbing(false);
     setDraftSelection(null);
     if (e.currentTarget.hasPointerCapture(e.pointerId)) {
@@ -99,11 +89,9 @@ export function AudioCanvas({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Handle high DPI displays
     const resizeCanvas = () => {
       const rect = canvas.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
@@ -111,7 +99,6 @@ export function AudioCanvas({
       canvas.height = rect.height * dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
-
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
 
@@ -119,53 +106,87 @@ export function AudioCanvas({
       const w = canvas.width / (window.devicePixelRatio || 1);
       const h = canvas.height / (window.devicePixelRatio || 1);
 
-      // Clear Canvas
       ctx.clearRect(0, 0, w, h);
 
-      // Draw dark background panel
-      ctx.fillStyle = '#0f172a'; // slate-900
+      // Background
+      ctx.fillStyle = '#08111f';
       ctx.fillRect(0, 0, w, h);
 
-      // 1. Draw horizontal guide line
-      ctx.strokeStyle = '#1e293b'; // slate-800
+      // Horizontal centerline
+      ctx.strokeStyle = 'rgba(255,255,255,0.06)';
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(0, h / 2);
       ctx.lineTo(w, h / 2);
       ctx.stroke();
 
-      // Compute progress
       const progress = duration > 0 ? currentTime / duration : 0;
       const playheadX = progress * w;
+
+      // Selection / draft region (amber)
       const activeSelection = draftSelection ?? selection;
       if (activeSelection && duration > 0) {
-        const selectionStart = Math.min(activeSelection.start, activeSelection.end);
-        const selectionEnd = Math.max(activeSelection.start, activeSelection.end);
-        const startX = (selectionStart / duration) * w;
-        const endX = (selectionEnd / duration) * w;
-        ctx.fillStyle = 'rgba(251, 191, 36, 0.18)';
+        const selStart = Math.min(activeSelection.start, activeSelection.end);
+        const selEnd = Math.max(activeSelection.start, activeSelection.end);
+        const startX = (selStart / duration) * w;
+        const endX = (selEnd / duration) * w;
+        ctx.fillStyle = 'rgba(251,191,36,0.14)';
         ctx.fillRect(startX, 0, Math.max(2, endX - startX), h);
-        ctx.strokeStyle = 'rgba(252, 211, 77, 0.75)';
+        ctx.strokeStyle = 'rgba(252,211,77,0.7)';
         ctx.lineWidth = 1;
         ctx.strokeRect(startX, 0.5, Math.max(2, endX - startX), h - 1);
       }
 
-      // 2. Draw vertical waveform bars
-      const numBars = amplitudes.length;
+      // Waveform bars
+      const hasPeaks = peaks.length > 0;
+      const numBars = hasPeaks ? peaks.length : 120;
       const barSpacing = w / numBars;
-      const barWidth = Math.max(1.5, barSpacing * 0.6);
+      const barWidth = Math.max(1.5, barSpacing * 0.55);
+
+      // Precompute silence map: for each bar index, is it inside a silence range?
+      const silenceAt = new Uint8Array(numBars);
+      if (silences.length > 0 && duration > 0) {
+        for (let b = 0; b < numBars; b++) {
+          const t = ((b + 0.5) / numBars) * duration;
+          for (let s = 0; s < silences.length; s++) {
+            if (t >= silences[s].start && t <= silences[s].end) {
+              silenceAt[b] = 1;
+              break;
+            }
+          }
+        }
+      }
 
       for (let i = 0; i < numBars; i++) {
         const barX = i * barSpacing + barSpacing / 2;
-        const amplitude = amplitudes[i];
-        const barHeight = amplitude * (h * 0.7);
 
-        // Highlight bars that have already been played
-        const isPlayed = barX <= playheadX;
-        ctx.fillStyle = isPlayed ? '#6366f1' : '#475569'; // indigo-500 or slate-600
+        // Amplitude: real peak when available, placeholder otherwise.
+        let amplitude: number;
+        if (hasPeaks) {
+          amplitude = peaks[i] ?? 0;
+        } else {
+          // Subtle placeholder — uniform low bars so the UI isn't blank.
+          amplitude = 0.18 + 0.06 * ((i % 5) / 4);
+        }
 
-        // Rounded vertical bars
+        const maxBarHeight = h * 0.78;
+        const barHeight = Math.max(2, amplitude * maxBarHeight);
         const yTop = (h - barHeight) / 2;
+
+        const isPlayed = barX <= playheadX;
+        const inSilence = silenceAt[i] === 1;
+
+        // Color: azure played vs azure unplayed; silence regions are very dim.
+        let baseAlpha: number;
+        if (inSilence) {
+          baseAlpha = 0.12;
+        } else if (isPlayed) {
+          baseAlpha = 0.92;
+        } else {
+          baseAlpha = hasPeaks ? 0.38 : 0.22;
+        }
+
+        ctx.fillStyle = `rgba(56,189,248,${baseAlpha})`;
         ctx.beginPath();
         if (ctx.roundRect) {
           ctx.roundRect(barX - barWidth / 2, yTop, barWidth, barHeight, barWidth / 2);
@@ -175,63 +196,26 @@ export function AudioCanvas({
         ctx.fill();
       }
 
-      // 3. Draw animated glowing wave ribbon when playing/active
-      if (isPlaying) {
-        phaseRef.current += 0.04;
-      }
-
-      ctx.save();
-      ctx.globalCompositeOperation = 'screen';
-
-      const drawRibbon = (color: string, amplitudeScale: number, speedScale: number, freqScale: number) => {
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-
-        for (let x = 0; x < w; x++) {
-          // Combination of sine waves
-          const y = h / 2 + 
-            Math.sin(x * 0.015 * freqScale + phaseRef.current * speedScale) * 12 * amplitudeScale +
-            Math.cos(x * 0.007 * freqScale - phaseRef.current * 0.7 * speedScale) * 6 * amplitudeScale;
-          
-          if (x === 0) {
-            ctx.moveTo(x, y);
-          } else {
-            ctx.lineTo(x, y);
-          }
-        }
-        ctx.stroke();
-      };
-
-      // Draw three overlapping ribbons for a premium neon feel
-      drawRibbon('rgba(99, 102, 241, 0.45)', 1.0, 1.0, 1.0);  // Indigo-500
-      drawRibbon('rgba(236, 72, 153, 0.3)', 0.8, 1.3, 1.4);   // Pink-500
-      drawRibbon('rgba(6, 182, 212, 0.35)', 1.2, 0.7, 0.7);   // Cyan-500
-
-      ctx.restore();
-
-      // 4. Draw seek scrubber position overlay (vertical neon line + circle)
-      ctx.shadowBlur = 8;
-      ctx.shadowColor = '#6366f1';
-      ctx.strokeStyle = '#818cf8'; // indigo-400
-      ctx.lineWidth = 2;
-
+      // Playhead line (azure)
+      ctx.shadowBlur = 6;
+      ctx.shadowColor = 'rgba(56,189,248,0.6)';
+      ctx.strokeStyle = 'rgba(56,189,248,0.9)';
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.moveTo(playheadX, 0);
       ctx.lineTo(playheadX, h);
       ctx.stroke();
 
-      // Scrubber head circle
+      // Scrubber head
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = 'rgba(56,189,248,0.7)';
       ctx.fillStyle = '#ffffff';
-      ctx.shadowBlur = 12;
       ctx.beginPath();
-      ctx.arc(playheadX, h / 2, isScrubbing ? 8 : 5, 0, 2 * Math.PI);
+      ctx.arc(playheadX, h / 2, isScrubbing ? 7 : 4.5, 0, 2 * Math.PI);
       ctx.fill();
 
-      // Reset shadows
       ctx.shadowBlur = 0;
 
-      // Loop rendering
       animationFrameId.current = requestAnimationFrame(render);
     };
 
@@ -243,10 +227,10 @@ export function AudioCanvas({
         cancelAnimationFrame(animationFrameId.current);
       }
     };
-  }, [amplitudes, currentTime, draftSelection, duration, isPlaying, isScrubbing, selection]);
+  }, [peaks, silences, currentTime, draftSelection, duration, isScrubbing, selection]);
 
   return (
-    <div className="relative w-full h-24 rounded-xl overflow-hidden border border-slate-800 shadow-lg">
+    <div className="relative w-full h-24 rounded-xl overflow-hidden border border-white/[0.12] shadow-lg">
       <canvas
         ref={canvasRef}
         className="w-full h-full block cursor-pointer touch-none"
@@ -256,8 +240,10 @@ export function AudioCanvas({
         onPointerCancel={handlePointerCancel}
       />
       {duration <= 0 && (
-        <div className="absolute inset-0 bg-slate-900/80 flex items-center justify-center pointer-events-none select-none">
-          <span className="text-slate-400 text-xs tracking-wider">NO AUDIO LOADED</span>
+        <div className="absolute inset-0 bg-[#08111f]/80 flex items-center justify-center pointer-events-none select-none">
+          <span className="text-[11px] tracking-wider" style={{ color: 'var(--text-subtle)' }}>
+            NO AUDIO LOADED
+          </span>
         </div>
       )}
     </div>

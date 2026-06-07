@@ -15,6 +15,10 @@ export interface StoredProject {
   audioBlob: Blob;
   words: CaptionWord[];
   translation: Translation | null;
+  /** Cached peak envelope [0..1] per bucket, used to render the waveform without
+   *  re-decoding the full audio on project open. Optional — computed async after
+   *  transcription and absent on projects saved before this field was added. */
+  peaks?: number[];
 }
 
 export type ProjectMeta = Omit<StoredProject, 'audioBlob' | 'words' | 'translation'>;

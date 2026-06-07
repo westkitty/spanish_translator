@@ -44,7 +44,7 @@ export function LibraryModal({ open, onClose, projects, onOpenProject, onDeleteP
                 className="flex-grow text-left overflow-hidden cursor-pointer"
               >
                 <p className="text-[13px] font-semibold text-slate-100 truncate">{p.name}</p>
-                <p className="text-[10px] text-slate-400 font-mono mt-0.5 flex items-center gap-1.5">
+                <p className="text-[11px] font-mono mt-0.5 flex items-center gap-1.5" style={{ color: 'var(--text-subtle)' }}>
                   <Clock className="w-3 h-3" /> {relativeDate(p.updatedAt)} · {fmtDuration(p.durationSec)}
                 </p>
               </button>

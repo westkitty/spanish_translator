@@ -92,12 +92,12 @@ export function ProgressPanel({ status, modelProgress, progress, onCancel }: Pro
         )}
       </div>
 
-      <div className="flex items-center gap-3 text-[10px] font-mono text-slate-500">
+      <div className="flex items-center gap-3 text-[11px] font-mono" style={{ color: 'var(--text-subtle)' }}>
         {determinate != null && <span>{Math.round(determinate * 100)}%</span>}
         {progress && <span>{friendlyElapsed(liveElapsed)}</span>}
       </div>
 
-      <p className="text-[10px] text-slate-400">
+      <p className="text-[11px]" style={{ color: 'var(--text-subtle)' }}>
         Everything runs on your device — your audio never leaves it.
       </p>
 

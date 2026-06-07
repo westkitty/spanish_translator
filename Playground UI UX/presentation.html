@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Spanish Whisper Engine — UI/UX Direction</title>
+<style>
+  :root{
+    --azure-400:#38bdf8; --azure-500:#0ea5e9; --azure-600:#0284c7;
+    --emerald:#34d399; --amber:#fbbf24; --rose:#fb7185;
+    --ink-950:#050912; --ink-900:#0a1120;
+    --text:#e8eefc; --text-muted:#aab6cf; --text-subtle:#7d8aa6;
+    --glass-bg:rgba(255,255,255,.05); --glass-bg-strong:rgba(255,255,255,.08);
+    --glass-border:rgba(255,255,255,.10); --glass-border-strong:rgba(255,255,255,.18);
+    --good:#34d399; --bad:#fb7185;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; font-family:'Inter',ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    color:var(--text); background:var(--ink-950); -webkit-font-smoothing:antialiased; line-height:1.55;
+  }
+  .bg{position:fixed; inset:0; z-index:0; pointer-events:none; overflow:hidden;
+    background:radial-gradient(120% 80% at 50% 0%,rgba(49,46,129,.28) 0%,transparent 55%),
+               linear-gradient(180deg,var(--ink-900) 0%,var(--ink-950) 100%);}
+  .bg::after{content:"";position:absolute;left:50%;bottom:-25%;width:140vw;height:75vh;
+    transform:translateX(-50%);filter:blur(40px);
+    background:radial-gradient(closest-side,rgba(56,189,248,.30),rgba(14,165,233,.16) 40%,transparent 72%);}
+  .wrap{position:relative; z-index:1; max-width:1080px; margin:0 auto; padding:0 24px 120px;}
+  .glass{background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:20px;
+    backdrop-filter:blur(16px) saturate(140%);box-shadow:0 8px 32px rgba(2,8,23,.45),inset 0 1px 0 rgba(255,255,255,.08);}
+  .glass-strong{background:var(--glass-bg-strong);border:1px solid var(--glass-border-strong);border-radius:24px;
+    backdrop-filter:blur(22px) saturate(150%);box-shadow:0 16px 48px rgba(2,8,23,.6),inset 0 1px 0 rgba(255,255,255,.12);}
+  .glow{box-shadow:0 0 0 1px rgba(56,189,248,.4),0 8px 30px rgba(14,165,233,.35);}
+  section{padding:64px 0 24px; scroll-margin-top:70px}
+  .eyebrow{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--azure-400);font-weight:700;margin:0 0 10px}
+  h1{font-size:clamp(34px,6vw,60px);line-height:1.05;margin:0 0 16px;font-weight:800;letter-spacing:-.02em;
+    background:linear-gradient(100deg,#bae6fd,#60a5fa 60%,#818cf8);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  h2{font-size:clamp(24px,3.4vw,34px);margin:0 0 8px;font-weight:800;letter-spacing:-.01em;color:#f3f7ff}
+  h3{font-size:19px;margin:0 0 6px;font-weight:700;color:#f3f7ff}
+  p{color:var(--text-muted);margin:0 0 12px}
+  .lead{font-size:19px;color:var(--text-muted);max-width:760px}
+  .muted{color:var(--text-subtle)}
+  .grid{display:grid;gap:18px}
+  .g2{grid-template-columns:repeat(2,1fr)} .g3{grid-template-columns:repeat(3,1fr)} .g4{grid-template-columns:repeat(4,1fr)}
+  @media(max-width:860px){.g2,.g3,.g4{grid-template-columns:1fr}}
+  .card{padding:22px}
+  .pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;padding:4px 11px;border-radius:999px;
+    border:1px solid var(--glass-border-strong);color:var(--text-muted);background:var(--glass-bg)}
+  .pill.az{color:#bae6fd;border-color:rgba(56,189,248,.4);background:rgba(56,189,248,.10)}
+  .pill.em{color:#a7f3d0;border-color:rgba(52,211,153,.4);background:rgba(52,211,153,.10)}
+  .pill.am{color:#fde68a;border-color:rgba(251,191,36,.4);background:rgba(251,191,36,.10)}
+  .pill.ro{color:#fecdd3;border-color:rgba(251,113,133,.4);background:rgba(251,113,133,.10)}
+  .tag{font-size:11px;font-weight:700;padding:3px 9px;border-radius:7px}
+  .t-h{color:#fecdd3;background:rgba(251,113,133,.14)} .t-m{color:#fde68a;background:rgba(251,191,36,.14)} .t-l{color:#a7f3d0;background:rgba(52,211,153,.14)}
+  nav.toc{position:sticky;top:0;z-index:5;backdrop-filter:blur(12px);background:rgba(5,9,18,.7);
+    border-bottom:1px solid var(--glass-border);padding:12px 0;margin-bottom:8px}
+  nav.toc .inner{max-width:1080px;margin:0 auto;padding:0 24px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  nav.toc a{font-size:12.5px;color:var(--text-muted);text-decoration:none;padding:5px 10px;border-radius:8px;font-weight:600}
+  nav.toc a:hover{color:#fff;background:var(--glass-bg)}
+  nav.toc .brand{font-weight:800;color:#bae6fd;margin-right:8px;font-size:13px}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th,td{padding:10px 10px;text-align:center;border-bottom:1px solid var(--glass-border)}
+  th{color:var(--text-subtle);font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;font-weight:700}
+  td:first-child,th:first-child{text-align:left}
+  td.name{text-align:left;font-weight:600;color:#eaf2ff}
+  .score{font-weight:700}
+  .s5{color:#34d399}.s4{color:#86efac}.s3{color:#fde68a}.s2{color:#fdba74}.s1{color:#fb7185}
+  tr.win td{background:rgba(56,189,248,.07)}
+  .rank{display:flex;gap:14px;align-items:flex-start;margin-bottom:14px}
+  .medal{font-size:34px;line-height:1;flex-shrink:0}
+  .ba{display:grid;grid-template-columns:1fr 1fr;gap:0;border-radius:14px;overflow:hidden;border:1px solid var(--glass-border)}
+  @media(max-width:680px){.ba{grid-template-columns:1fr}}
+  .ba .col{padding:18px}
+  .ba .before{background:rgba(251,113,133,.06);border-right:1px solid var(--glass-border)}
+  .ba .after{background:rgba(52,211,153,.06)}
+  .ba h4{margin:0 0 10px;font-size:13px;letter-spacing:.08em;text-transform:uppercase}
+  .ba .before h4{color:#fb7185} .ba .after h4{color:#34d399}
+  .ba ul{margin:0;padding-left:18px} .ba li{color:var(--text-muted);font-size:13.5px;margin-bottom:7px}
+  ul.clean{list-style:none;padding:0;margin:0} ul.clean li{padding:6px 0 6px 26px;position:relative;color:var(--text-muted);font-size:14px}
+  ul.clean li::before{content:"";position:absolute;left:4px;top:13px;width:7px;height:7px;border-radius:2px;background:var(--azure-400)}
+  .check li::before{content:"☐";background:none;left:0;top:6px;color:var(--azure-400);font-size:14px;width:auto;height:auto}
+  /* mockup wireframes */
+  .wire{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--text-muted);
+    background:rgba(2,8,23,.5);border:1px solid var(--glass-border);border-radius:12px;padding:14px;white-space:pre;overflow:auto;line-height:1.45}
+  .wave-demo{height:64px;border-radius:10px;border:1px solid var(--glass-border);overflow:hidden;position:relative;background:#0b1224}
+  .barrow{display:flex;align-items:center;gap:2px;height:100%;padding:0 6px}
+  .barrow i{display:block;width:3px;border-radius:2px;background:var(--azure-500);opacity:.85}
+  .barrow.fake i{background:#6366f1}
+  .footer{margin-top:60px;padding-top:24px;border-top:1px solid var(--glass-border);color:var(--text-subtle);font-size:12.5px;text-align:center}
+  .roadmap{display:grid;grid-template-columns:auto 1fr;gap:0 18px}
+  .roadmap .w{padding:14px 0;border-bottom:1px solid var(--glass-border)}
+  .roadmap .wn{font-weight:800;color:#bae6fd;white-space:nowrap}
+  code{background:rgba(2,8,23,.6);border:1px solid var(--glass-border);border-radius:6px;padding:1px 6px;font-size:12.5px;color:#cfe4ff}
+  .kpi{font-size:30px;font-weight:800;color:#fff}.kpi small{display:block;font-size:12px;color:var(--text-subtle);font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-top:4px}
+</style>
+</head>
+<body>
+<div class="bg"></div>
+
+<nav class="toc">
+  <div class="inner">
+    <span class="brand">🎙️ Whisper Engine · UI/UX</span>
+    <a href="#diagnosis">Diagnosis</a>
+    <a href="#ten">10 Ideas</a>
+    <a href="#matrix">Scoring</a>
+    <a href="#top3">Top 3</a>
+    <a href="#roadmap">Roadmap</a>
+    <a href="#risks">Risks</a>
+    <a href="#validate">Validate</a>
+    <a href="#next">Next step</a>
+  </div>
+</nav>
+
+<div class="wrap">
+
+  <!-- TITLE -->
+  <section id="title" style="padding-top:48px">
+    <p class="eyebrow">UI/UX Audit & Direction · 2026-06-07</p>
+    <h1>Spanish Whisper Engine</h1>
+    <p class="lead">An offline, on-device Spanish transcription + translation app — reviewed from source <strong>and</strong> the live dev server. Strong glass bones, but the screens users live in clash with the brand, the core waveform is faked, and the layout ignores its own target device. Here is the three-move plan to fix it.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:18px">
+      <span class="pill az">React 19 · Vite · Tailwind v4</span>
+      <span class="pill em">On-device · Transformers.js</span>
+      <span class="pill">Capacitor · Android tablet</span>
+      <span class="pill am">Live-reviewed @ 375px & 1280px</span>
+    </div>
+  </section>
+
+  <!-- DIAGNOSIS -->
+  <section id="diagnosis">
+    <p class="eyebrow">Brief diagnosis</p>
+    <h2>A precision tablet tool wearing a phone-demo skin</h2>
+    <p class="lead">The product is sound and the onboarding is genuinely nice. Four problems hold the experience back — three are visible, one is a quiet honesty bug in the most-used widget.</p>
+    <div class="grid g2" style="margin-top:22px">
+      <div class="glass card">
+        <span class="pill ro">Honesty bug</span>
+        <h3 style="margin-top:12px">The waveform is fake</h3>
+        <p><code>AudioCanvas.tsx:29-40</code> builds a <code>Math.random()</code> shape, plus three neon sine "ribbons". The user scrubs and edits against a decoration — yet real PCM is already decoded for silence detection.</p>
+      </div>
+      <div class="glass card">
+        <span class="pill am">Consistency</span>
+        <h3 style="margin-top:12px">Two competing palettes</h3>
+        <p>Shell = azure glass. But the editor, translation & waveform still run on the old <strong>indigo + slate-700/950</strong> palette. The screens users spend the most time in fight the brand.</p>
+      </div>
+      <div class="glass card">
+        <span class="pill az">Layout</span>
+        <h3 style="margin-top:12px">Ignores its own device</h3>
+        <p>Target is a 14.6&Prime; tablet. Live <code>inspect</code>: <code>&lt;main&gt;</code> is <code>max-width:none</code>; modals pinned to <code>max-w-sm</code>. ~60–70% of the screen is wasted and Spanish/English never sit side by side.</p>
+      </div>
+      <div class="glass card">
+        <span class="pill em">Accessibility</span>
+        <h3 style="margin-top:12px">Too small, too low-contrast</h3>
+        <p>Saturated with <code>text-[10px]</code>/<code>[11px]</code> and even <code>text-[8px]</code>, much of it slate-500 on near-black (header subtitle verified at 10px). Plus a Tab-key hijack that breaks focus order.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 10 IDEAS -->
+  <section id="ten">
+    <p class="eyebrow">Summary</p>
+    <h2>All 10 improvement ideas</h2>
+    <p class="lead">Each: the user problem, the evidence, and effort/impact. Full detail in <code>ui-ux-audit.md</code>.</p>
+    <div class="grid g2" style="margin-top:22px">
+
+      <div class="glass card">
+        <div style="display:flex;justify-content:space-between;align-items:center"><h3>1 · Real waveform</h3><span class="pill az">★ Top 1</span></div>
+        <p>Draw a true peak envelope from decoded PCM + show silence gaps; drop the random shape and rainbow ribbons.</p>
+        <div><span class="tag t-m">Effort: Med</span> <span class="tag t-h" style="color:#a7f3d0;background:rgba(52,211,153,.14)">Impact: High</span></div>
+      </div>
+
+      <div class="glass card">
+        <div style="display:flex;justify-content:space-between;align-items:center"><h3>2 · Unify design system</h3></div>
+        <p>Semantic tokens; one accent (azure) for "active", emerald only = English, amber only = destructive. Kill indigo/raw-slate.</p>
+        <div><span class="tag t-l">Effort: Low–Med</span> <span class="tag" style="color:#fde68a;background:rgba(251,191,36,.14)">Impact: Med–High</span></div>
+      </div>
+
+      <div class="glass card">
+        <div style="display:flex;justify-content:space-between;align-items:center"><h3>3 · Tablet two-pane (bilingual)</h3><span class="pill az">★ Top 2</span></div>
+        <p>≥lg two-column grid: player+Spanish left, synced English right. Reclaims the wasted tablet space; enables side-by-side reading.</p>
+        <div><span class="tag t-m">Effort: Med–High</span> <span class="tag t-h" style="color:#a7f3d0;background:rgba(52,211,153,.14)">Impact: High</span></div>
+      </div>
+
+      <div class="glass card">
+        <div style="display:flex;justify-content:space-between;align-items:center"><h3>4 · Legibility & a11y pass</h3><span class="pill az">★ Top 3</span></div>
+        <p>Type scale (retire 8/10px), AA contrast, ≥44px targets, fix the Tab-key focus hijack.</p>
+        <div><span class="tag t-l">Effort: Low–Med</span> <span class="tag" style="color:#fde68a;background:rgba(251,191,36,.14)">Impact: Med–High</span></div>
+      </div>
+
+      <div class="glass card">
+        <h3>5 · Tame post-result clutter</h3>
+        <p>~8 equal-weight controls after transcription. Group transport; collapse region-rerun + "remember" under a disclosure; make Edit + Export primary.</p>
+        <div><span class="tag t-m">Effort: Med</span> <span class="tag" style="color:#fde68a;background:rgba(251,191,36,.14)">Impact: Med–High</span></div>
+      </div>
+
+      <div class="glass card">
+        <h3>6 · In-app confirm + toasts</h3>
+        <p>Replace two raw <code>window.confirm</code> calls; add save/copy success confirmation (exports are silent today).</p>
+        <div><span class="tag t-l">Effort: Low–Med</span> <span class="tag" style="color:#fde68a;background:rgba(251,191,36,.14)">Impact: Med</span></div>
+      </div>
+
+      <div class="glass card">
+        <h3>7 · Browsable word editor</h3>
+        <p>"Edit words" only shows a ~25s window around the playhead. Let it scroll the whole transcript with a "follow playback" toggle.</p>
+        <div><span class="tag t-m">Effort: Med</span> <span class="tag" style="color:#fde68a;background:rgba(251,191,36,.14)">Impact: Med</span></div>
+      </div>
+
+      <div class="glass card">
+        <h3>8 · Uncertainty / silence cues</h3>
+        <p>No true logprobs (TJS limit) — use proxies (chunk seams, very-short words, non-dictionary tokens) to flag "spots to check".</p>
+        <div><span class="tag t-m">Effort: Med</span> <span class="tag" style="color:#fde68a;background:rgba(251,191,36,.14)">Impact: Med</span></div>
+      </div>
+
+      <div class="glass card">
+        <h3>9 · 4-stage progress stepper</h3>
+        <p>Turn the lone spinner into Prepare · Download · Transcribe · Translate so the long first run feels structured.</p>
+        <div><span class="tag t-l">Effort: Low</span> <span class="tag" style="color:#fde68a;background:rgba(251,191,36,.14)">Impact: Med</span></div>
+      </div>
+
+      <div class="glass card">
+        <h3>10 · "Try a sample clip"</h3>
+        <p>Onboarding dead-ends at an empty dropzone. Bundle a 10–15s Spanish clip so anyone can reach a result instantly.</p>
+        <div><span class="tag t-l">Effort: Low</span> <span class="tag" style="color:#fde68a;background:rgba(52,211,153,.14)">Impact: Med (demo: High)</span></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- MATRIX -->
+  <section id="matrix">
+    <p class="eyebrow">Scoring matrix</p>
+    <h2>How they rank</h2>
+    <p class="lead">1–5, higher is better. For <em>Effort</em> and <em>Speed</em>, higher = easier/faster. Highlighted rows = the chosen top 3. Final picks weight strategic fit + user impact + demo value over raw totals.</p>
+    <div class="glass card" style="margin-top:20px;overflow-x:auto">
+      <table>
+        <thead><tr>
+          <th>Concept</th><th>User<br>impact</th><th>Effort<br>(easy=5)</th><th>Strategic<br>fit</th><th>Risk<br>reduction</th><th>Demo<br>value</th><th>Speed<br>(fast=5)</th><th>Maintain-<br>ability</th><th>Total</th>
+        </tr></thead>
+        <tbody>
+          <tr class="win"><td class="name">1 · Real waveform</td><td class="score s5">5</td><td class="score s3">3</td><td class="score s5">5</td><td class="score s5">5</td><td class="score s5">5</td><td class="score s3">3</td><td class="score s4">4</td><td class="score">30</td></tr>
+          <tr class="win"><td class="name">3 · Tablet two-pane</td><td class="score s5">5</td><td class="score s2">2</td><td class="score s5">5</td><td class="score s3">3</td><td class="score s5">5</td><td class="score s2">2</td><td class="score s4">4</td><td class="score">26</td></tr>
+          <tr class="win"><td class="name">4 · Legibility & a11y</td><td class="score s4">4</td><td class="score s4">4</td><td class="score s4">4</td><td class="score s5">5</td><td class="score s3">3</td><td class="score s4">4</td><td class="score s5">5</td><td class="score">29</td></tr>
+          <tr><td class="name">2 · Design-system unify</td><td class="score s4">4</td><td class="score s4">4</td><td class="score s4">4</td><td class="score s3">3</td><td class="score s5">5</td><td class="score s4">4</td><td class="score s5">5</td><td class="score">29</td></tr>
+          <tr><td class="name">10 · Sample clip</td><td class="score s3">3</td><td class="score s5">5</td><td class="score s3">3</td><td class="score s3">3</td><td class="score s5">5</td><td class="score s5">5</td><td class="score s4">4</td><td class="score">28</td></tr>
+          <tr><td class="name">9 · Progress stepper</td><td class="score s3">3</td><td class="score s5">5</td><td class="score s3">3</td><td class="score s3">3</td><td class="score s4">4</td><td class="score s5">5</td><td class="score s4">4</td><td class="score">27</td></tr>
+          <tr><td class="name">5 · Tame clutter</td><td class="score s4">4</td><td class="score s3">3</td><td class="score s4">4</td><td class="score s3">3</td><td class="score s4">4</td><td class="score s3">3</td><td class="score s4">4</td><td class="score">25</td></tr>
+          <tr><td class="name">6 · Confirm + toasts</td><td class="score s3">3</td><td class="score s4">4</td><td class="score s3">3</td><td class="score s4">4</td><td class="score s3">3</td><td class="score s4">4</td><td class="score s4">4</td><td class="score">25</td></tr>
+          <tr><td class="name">7 · Browsable editor</td><td class="score s4">4</td><td class="score s3">3</td><td class="score s4">4</td><td class="score s3">3</td><td class="score s3">3</td><td class="score s3">3</td><td class="score s3">3</td><td class="score">23</td></tr>
+          <tr><td class="name">8 · Uncertainty cues</td><td class="score s3">3</td><td class="score s3">3</td><td class="score s4">4</td><td class="score s2">2</td><td class="score s3">3</td><td class="score s3">3</td><td class="score s3">3</td><td class="score">21</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- TOP 3 -->
+  <section id="top3">
+    <p class="eyebrow">Recommendations</p>
+    <h2>The top 3 moves</h2>
+
+    <!-- TOP 1 -->
+    <div class="glass-strong card" style="margin-top:22px">
+      <div class="rank"><div class="medal">🥇</div><div>
+        <h2 style="font-size:26px">Render the real waveform</h2>
+        <p class="muted">Concept #1 · <span class="tag t-m">Effort: Med</span> <span class="tag t-h" style="color:#a7f3d0;background:rgba(52,211,153,.14)">Impact: High</span></p>
+      </div></div>
+      <p><strong>Why it wins:</strong> The waveform is the center of the core loop (scrub → find → edit → loop) and today it's decorative noise. Fixing it turns the most-touched element into the app's most useful instrument and removes a credibility risk no other polish can offset. The real PCM is <em>already decoded</em> for silence detection — the hard part is done. The other moves make the app nicer; this one makes its core honest and functional.</p>
+      <div class="grid g2">
+        <div><h3>First pass</h3><ul class="clean">
+          <li>Peak envelope (600–1000 buckets) from existing decoded PCM</li>
+          <li>Real bars + dim silence gaps from <code>vad.ts</code></li>
+          <li>Single azure played/unplayed split; remove 3 neon ribbons</li>
+          <li>Cache peaks on the project record for instant reopen</li>
+        </ul></div>
+        <div><h3>Defer</h3><ul class="clean">
+          <li>Zoomable / pinch waveform</li>
+          <li>Per-word amplitude alignment</li>
+          <li>Color-by-confidence overlay</li>
+        </ul>
+        <h3 style="margin-top:12px">Files</h3><p class="muted" style="font-size:13px"><code>AudioCanvas.tsx</code> · <code>App.tsx</code> · reuse <code>lib/audio.ts</code> + <code>lib/vad.ts</code> · cache on <code>lib/db.ts</code></p></div>
+      </div>
+      <h3 style="margin-top:6px">Before → After</h3>
+      <div class="ba">
+        <div class="col before"><h4>Before — fake</h4>
+          <div class="wave-demo"><div class="barrow fake" id="fakebars"></div></div>
+          <ul style="margin-top:10px"><li>Random walk; same shape for every file</li><li>3 rainbow sine ribbons (off-brand)</li><li>No relationship to speech or silence</li></ul>
+        </div>
+        <div class="col after"><h4>After — real</h4>
+          <div class="wave-demo"><div class="barrow" id="realbars"></div></div>
+          <ul style="margin-top:10px"><li>True peak envelope from decoded PCM</li><li>Silence gaps visible at a glance</li><li>One azure played/unplayed split — on brand</li></ul>
+        </div>
+      </div>
+      <h3 style="margin-top:16px">Acceptance</h3>
+      <ul class="clean check">
+        <li>Bars derive from real samples (transient + silence visibly distinct on a known clip)</li>
+        <li>Silences rendered as gaps; played/unplayed uses the azure token</li>
+        <li>No <code>Math.random()</code> amplitudes; rainbow ribbons removed</li>
+        <li>Peaks cached so reopened projects render instantly</li>
+      </ul>
+    </div>
+
+    <!-- TOP 2 -->
+    <div class="glass-strong card" style="margin-top:22px">
+      <div class="rank"><div class="medal">🥈</div><div>
+        <h2 style="font-size:26px">Responsive two-pane bilingual layout</h2>
+        <p class="muted">Concept #3 · <span class="tag t-m">Effort: Med–High</span> <span class="tag t-h" style="color:#a7f3d0;background:rgba(52,211,153,.14)">Impact: High</span></p>
+      </div></div>
+      <p><strong>Why it wins:</strong> It aligns the app with its <em>actual device</em> (14.6&Prime; tablet) and its <em>actual job</em> (read Spanish against English). It reclaims 60–70% of wasted screen and delivers the one view a bilingual user most wants but can't get today. Higher ceiling than the cheap polish items, and uniquely tied to the hardware it ships on.</p>
+      <h3>Before → After (wireframe)</h3>
+      <div class="grid g2">
+        <div class="wire">BEFORE  (1280px tablet)
+┌──────────────────────────────┐
+│ header                       │
+│ ┌──────── upload ──────────┐ │
+│ │  (narrow, centered)      │ │
+│ └──────────────────────────┘ │
+│ ┌──── waveform (full) ─────┐ │
+│ ┌──── Spanish editor ──────┐ │
+│ ┌──── English (below) ─────┐ │  ← scroll
+│ ┌──── export ──────────────┐ │
+└──────────────────────────────┘
+  ~60–70% horizontal space idle</div>
+        <div class="wire">AFTER  (≥1024px)
+┌──────────────────────────────┐
+│ header                       │
+│ ┌── transport + waveform ──┐ │
+│ ├─────────────┬────────────┤ │
+│ │  SPANISH    │  ENGLISH   │ │
+│ │  (editable) │  (synced,  │ │
+│ │  • word ────┼─► sticky)  │ │
+│ │  • word     │  highlight │ │
+│ ├─────────────┴────────────┤ │
+│ │ export · library         │ │
+└──────────────────────────────┘
+  read both languages at once</div>
+      </div>
+      <div class="grid g2" style="margin-top:14px">
+        <div><h3>First pass</h3><ul class="clean">
+          <li>≥lg two-column grid; phone stays single-column</li>
+          <li>Right pane sticky English, scroll active segment into view</li>
+          <li>Click either side → highlight both</li>
+          <li>Per-column <code>max-w</code> for readable line length</li>
+        </ul></div>
+        <div><h3>Defer / Files</h3><ul class="clean">
+          <li>Interleaved ES/EN "read" mode</li>
+          <li>Drag-to-resize panes</li>
+          <li><code>App.tsx</code> grid · <code>TranslationPanel.tsx</code> sticky+sync · minor <code>TranscriptView.tsx</code></li>
+        </ul></div>
+      </div>
+      <h3 style="margin-top:6px">Acceptance</h3>
+      <ul class="clean check">
+        <li>At ≥1024px, Spanish + matching English visible together, no vertical hunting</li>
+        <li>Active sentence/segment highlights in both panes</li>
+        <li>Column line length capped; wasted empty space gone</li>
+        <li>Phone layout unchanged; no horizontal scroll at any breakpoint</li>
+      </ul>
+    </div>
+
+    <!-- TOP 3 -->
+    <div class="glass-strong card" style="margin-top:22px">
+      <div class="rank"><div class="medal">🥉</div><div>
+        <h2 style="font-size:26px">Legibility, contrast & a11y pass <span class="muted" style="font-size:15px">+ design-system unify</span></h2>
+        <p class="muted">Concepts #4 &amp; #2 (bundled) · <span class="tag t-l">Effort: Low–Med</span> <span class="tag" style="color:#fde68a;background:rgba(251,191,36,.14)">Impact: Med–High</span></p>
+      </div></div>
+      <p><strong>Why it wins:</strong> The cheapest broad quality lift and the only top pick that touches <em>every</em> screen. It fixes genuine usability harm (8–11px low-contrast text at tablet distance, sub-44px targets) and a real keyboard-a11y bug — and because the same sweep introduces color tokens, it also closes the indigo/azure split. Two of the four headline problems gone in one low-risk, style-only pass. Highest maintainability payoff for least effort.</p>
+      <div class="grid g2">
+        <div><h3>First pass</h3><ul class="clean">
+          <li>Type scale: body 14 / secondary 12 / micro 11 floor (retire 8 & 10px)</li>
+          <li>Informational text → ≥4.5:1 contrast token</li>
+          <li>Icon buttons padded to ≥44×44</li>
+          <li>Scope the Tab shortcut so native focus order survives</li>
+          <li>Semantic color tokens; refactor editor/translation/waveform off indigo + raw slate</li>
+        </ul></div>
+        <div><h3>Defer / Files</h3><ul class="clean">
+          <li>Full light theme; density toggle</li>
+          <li><code>index.css</code> (tokens+scale)</li>
+          <li><code>CaptionEditor</code> · <code>TranslationPanel</code> · <code>AudioCanvas</code></li>
+          <li><code>App.tsx</code> (key handler, micro labels) · <code>CaptionExport.tsx</code> (8px labels)</li>
+        </ul></div>
+      </div>
+      <h3 style="margin-top:6px">Acceptance</h3>
+      <ul class="clean check">
+        <li>No text below 11px; informational text passes AA (4.5:1)</li>
+        <li>All interactive targets ≥44×44</li>
+        <li>Tab no longer breaks page focus order; consistent focus ring</li>
+        <li>Zero indigo / raw slate-700|950 utilities in components; one accent = "active"</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ROADMAP -->
+  <section id="roadmap">
+    <p class="eyebrow">Implementation roadmap</p>
+    <h2>Four waves</h2>
+    <div class="glass card" style="margin-top:18px">
+      <div class="roadmap">
+        <div class="w wn">Wave 1<br><span class="muted" style="font-weight:600">1–2 days</span></div>
+        <div class="w"><strong>Foundation — #2 tokens + #4 legibility/a11y.</strong> Style-only, unblocks everything visual, closes 2 headline issues cheaply.</div>
+        <div class="w wn">Wave 2<br><span class="muted" style="font-weight:600">1–2 days</span></div>
+        <div class="w"><strong>Core fix — #1 real waveform.</strong> Highest-leverage; benefits from the Wave-1 tokens.</div>
+        <div class="w wn">Wave 3<br><span class="muted" style="font-weight:600">2–4 days</span></div>
+        <div class="w"><strong>Layout — #3 tablet two-pane.</strong> Biggest IA change; rides on shared tokens + the real waveform.</div>
+        <div class="w wn">Wave 4<br><span class="muted" style="font-weight:600">1–2 days</span></div>
+        <div class="w"><strong>Trust & polish — #9 stepper, #10 sample clip, #6 confirm/toasts.</strong> Cheap activation/trust wins.</div>
+        <div class="w wn" style="border:none">Backlog</div>
+        <div class="w" style="border:none"><strong>#5 hierarchy · #7 browsable editor · #8 uncertainty cues.</strong> Higher effort or partly blocked (TJS logprobs).</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- RISKS -->
+  <section id="risks">
+    <p class="eyebrow">Risks & tradeoffs</p>
+    <h2>What to watch</h2>
+    <div class="grid g2" style="margin-top:18px">
+      <div class="glass card"><h3>Performance on long files</h3><p>Real waveform + browsable editor must use fixed-bucket envelopes and count-based virtualization to stay O(n).</p></div>
+      <div class="glass card"><h3>Don't regress the phone</h3><p>Every layout change must keep the <code>&lt;md</code> single-column intact — the app still ships to phones.</p></div>
+      <div class="glass card"><h3>Honesty in copy</h3><p>Uncertainty cues and the stepper must not over-claim: flag "spots to check", show only stages that actually run.</p></div>
+      <div class="glass card"><h3>GPU cost & motion</h3><p>Heavy <code>backdrop-filter</code> on a big tablet is already costly — drop the animated ribbons, keep <code>prefers-reduced-motion</code> honored.</p></div>
+      <div class="glass card"><h3>Discoverability vs. tidiness</h3><p>Collapsing power tools (#5) can hide features — keep them secondary-but-present and remember open state.</p></div>
+      <div class="glass card"><h3>APK / release discipline</h3><p>Per project rule, bundle these UI changes into <strong>one</strong> rebuilt signed APK + refreshed GitHub Release rather than many.</p></div>
+    </div>
+  </section>
+
+  <!-- VALIDATE -->
+  <section id="validate">
+    <p class="eyebrow">Validation checklist</p>
+    <h2>How we'll know it worked</h2>
+    <div class="glass card" style="margin-top:18px">
+      <ul class="clean check">
+        <li>axe/Lighthouse a11y: AA contrast, target sizes, focus order all pass</li>
+        <li>Known-clip waveform test — transient + silence visible</li>
+        <li>Tablet (≥1024) shows bilingual side-by-side; phone unchanged; no horizontal scroll</li>
+        <li>One accent = "active" across all surfaces; no indigo remnants</li>
+        <li>Every export/save shows visible confirmation; no <code>window.confirm</code></li>
+        <li>New-session activation (reaches a transcript) measurably up after the sample clip</li>
+        <li>Unit tests green (<code>npm test</code>); clean <code>npm run build</code></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- NEXT -->
+  <section id="next">
+    <p class="eyebrow">Next step</p>
+    <h2>Start here</h2>
+    <div class="glass-strong card" style="margin-top:18px">
+      <p style="font-size:17px;color:var(--text)"><strong>Begin Wave 1.</strong> Add semantic color + type tokens to <code>index.css</code>, then refactor <code>CaptionEditor</code>, <code>TranslationPanel</code> and <code>AudioCanvas</code> onto them — bumping every sub-12px size, padding icon buttons to 44px, and scoping the Tab shortcut.</p>
+      <p class="muted">Low-risk and style-only, it closes two of the four headline problems and lays the token foundation that the real waveform (#1) and the two-pane layout (#3) both build on.</p>
+      <div class="grid g3" style="margin-top:8px">
+        <div class="glass card" style="text-align:center"><div class="kpi">4<small>headline problems</small></div></div>
+        <div class="glass card" style="text-align:center"><div class="kpi">3<small>top moves</small></div></div>
+        <div class="glass card" style="text-align:center"><div class="kpi">~1wk<small>to all top 3</small></div></div>
+      </div>
+    </div>
+    <div class="footer">Spanish Whisper Engine · UI/UX audit &amp; direction · reviewed from source + live dev server (375px &amp; 1280px) · 2026-06-07<br>Full written audit, evidence and reasoning: <code>ui-ux-audit.md</code></div>
+  </section>
+
+</div>
+
+<script>
+  // illustrative demo bars: fake (random, uniform) vs real (envelope with a silence gap)
+  const fake = document.getElementById('fakebars');
+  const real = document.getElementById('realbars');
+  if(fake){ for(let i=0;i<90;i++){const b=document.createElement('i');b.style.height=(20+Math.random()*70)+'%';fake.appendChild(b);} }
+  if(real){
+    for(let i=0;i<90;i++){
+      const b=document.createElement('i');
+      // speech envelope with a clear silence gap around 0.42–0.55
+      const t=i/90; let env=Math.abs(Math.sin(t*6.0))*Math.exp(-Math.pow((t-0.25)/0.3,2))
+                 + Math.abs(Math.sin(t*9.0))*Math.exp(-Math.pow((t-0.75)/0.22,2));
+      if(t>0.42&&t<0.55) env*=0.06;            // the silence
+      b.style.height=Math.max(6,env*95)+'%';
+      b.style.opacity = (t < 0.5 ? 0.95 : 0.4); // played vs unplayed split
+      real.appendChild(b);
+    }
+  }
+</script>
+</body>
+</html>

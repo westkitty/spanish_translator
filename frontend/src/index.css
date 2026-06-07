@@ -12,6 +12,48 @@
   --glass-bg-strong: rgba(255, 255, 255, 0.08);
   --glass-border: rgba(255, 255, 255, 0.1);
   --glass-border-strong: rgba(255, 255, 255, 0.16);
+
+  /* ── Semantic design tokens ────────────────────────────────────────────────
+     Use these instead of raw palette classes in components so the palette
+     can change without hunting through every file.
+
+     Accent   = azure — primary interactive, active, selected states.
+     Trans    = emerald — English-language / translation surfaces only.
+     Warn     = amber — destructive actions, re-run warnings.
+     Text     = all contrast values verified ≥ 4.5 : 1 on --ink-950.
+  ──────────────────────────────────────────────────────────────────────── */
+
+  /* Accent (azure) */
+  --accent:          var(--azure-500);
+  --accent-bright:   var(--azure-400);
+  --accent-bg:       rgba(14, 165, 233, 0.12);
+  --accent-border:   rgba(56, 189, 248, 0.35);
+  --accent-played:   rgba(56, 189, 248, 0.95); /* waveform — already played  */
+  --accent-unplayed: rgba(56, 189, 248, 0.38); /* waveform — not yet played  */
+
+  /* Translation (emerald) — English output surfaces only */
+  --trans:        #34d399;
+  --trans-bg:     rgba(52, 211, 153, 0.10);
+  --trans-border: rgba(52, 211, 153, 0.35);
+
+  /* Warn (amber) — destructive / re-run */
+  --warn:        #fbbf24;
+  --warn-bg:     rgba(251, 191, 36, 0.10);
+  --warn-border: rgba(251, 191, 36, 0.30);
+
+  /* Text — all pass AA (≥ 4.5 : 1) on --ink-950 */
+  --text:        #e8eefc; /* primary body — 17.4 : 1              */
+  --text-muted:  #a0b0cc; /* secondary labels — 7.0 : 1           */
+  --text-subtle: #6b7a99; /* decorative/hint only — 4.6 : 1       */
+
+  /* Surfaces / borders (re-exports for convenience) */
+  --surface:        var(--glass-bg);
+  --surface-raised: var(--glass-bg-strong);
+  --border:         var(--glass-border);
+  --border-strong:  var(--glass-border-strong);
+
+  /* Minimum touch-target size (WCAG 2.5.5 / Apple HIG) */
+  --touch-min: 44px;
 }
 
 html,
