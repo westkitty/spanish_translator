@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Dexterpreter logo</title>
+  <desc id="desc">A local/offline waveform and translation mark for Dexterpreter.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="0.55" stop-color="#111827"/>
+      <stop offset="1" stop-color="#164e63"/>
+    </linearGradient>
+    <linearGradient id="wave" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#22c55e"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <path d="M120 302c30 42 78 66 136 66 57 0 105-24 136-66" fill="none" stroke="#334155" stroke-width="22" stroke-linecap="round"/>
+  <path d="M134 200h248c22 0 40 18 40 40v70c0 22-18 40-40 40h-44l-46 48c-7 8-20 3-20-8v-40H134c-22 0-40-18-40-40v-70c0-22 18-40 40-40z" fill="#020617" stroke="#38bdf8" stroke-width="14"/>
+  <path d="M132 274h28l14-42 26 92 28-148 28 148 25-88 19 54h80" fill="none" stroke="url(#wave)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M160 142h192" stroke="#64748b" stroke-width="18" stroke-linecap="round"/>
+  <path d="M190 112h132" stroke="#475569" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="191" cy="414" r="10" fill="#38bdf8"/>
+  <circle cx="256" cy="426" r="10" fill="#f8fafc"/>
+  <circle cx="321" cy="414" r="10" fill="#22c55e"/>
+</svg>

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600">
+  <rect width="960" height="600" fill="#020617"/>
+  <rect x="58" y="46" width="844" height="508" rx="28" fill="#0f172a" stroke="#1e293b" stroke-width="3"/>
+  <text x="92" y="104" font-family="Arial" font-size="34" font-weight="700" fill="#f8fafc">Dexterpreter</text>
+  <text x="92" y="140" font-family="Arial" font-size="18" fill="#94a3b8">Spanish audio in. Local transcript out.</text>
+  <rect x="122" y="202" width="716" height="214" rx="20" fill="#020617" stroke="#38bdf8" stroke-width="4" stroke-dasharray="16 14"/>
+  <path d="M348 308h64l20-52 30 112 34-174 34 174 28-88 22 56h72" fill="none" stroke="#22c55e" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="350" y="470" font-family="Arial" font-size="26" font-weight="700" fill="#e0f2fe">Choose audio or record</text>
+  <text x="324" y="504" font-family="Arial" font-size="18" fill="#94a3b8">First run downloads models once. Then it shuts up and works offline.</text>
+</svg>

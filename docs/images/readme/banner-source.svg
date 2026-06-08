@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 640">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#020617"/>
+      <stop offset="0.7" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#064e3b"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#22c55e"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="640" fill="url(#bg)"/>
+  <g opacity=".18" stroke="#38bdf8" stroke-width="2">
+    <path d="M0 470 C180 410 300 530 480 470 S780 410 960 470 1260 530 1600 430" fill="none"/>
+    <path d="M0 520 C180 460 300 580 480 520 S780 460 960 520 1260 580 1600 480" fill="none"/>
+  </g>
+  <g transform="translate(140 96)">
+    <rect width="448" height="448" rx="76" fill="#020617" stroke="#1e293b" stroke-width="4"/>
+    <path d="M88 240h58l24-68 42 156 48-244 46 244 38-132 28 76h78" fill="none" stroke="url(#accent)" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M118 332c52 48 124 74 216 42" fill="none" stroke="#334155" stroke-width="20" stroke-linecap="round"/>
+  </g>
+  <g font-family="Inter, Arial, sans-serif">
+    <text x="690" y="230" font-size="94" font-weight="800" fill="#f8fafc">Dexterpreter</text>
+    <text x="696" y="302" font-size="34" fill="#bae6fd">Offline audio transcription and translation.</text>
+    <text x="696" y="360" font-size="30" fill="#94a3b8">Spanish now. More languages later. Cloud never.</text>
+    <rect x="696" y="414" width="470" height="56" rx="12" fill="#0f172a" stroke="#334155"/>
+    <text x="724" y="452" font-size="24" fill="#86efac">No cloud. No telemetry. No nonsense.</text>
+  </g>
+</svg>

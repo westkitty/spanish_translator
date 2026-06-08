@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.spanishcaptionengine.app',
-  appName: 'Spanish Caption Engine',
+  appId: 'io.github.westkitty.dexterpreter',
+  appName: 'Dexterpreter',
   webDir: 'dist',
   server: {
     androidScheme: 'https',

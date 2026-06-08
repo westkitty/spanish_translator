@@ -2,12 +2,12 @@
 
 Date: 2026-06-08
 Repository: `westkitty/spanish_translator`
-Project surface: Spanish Whisper Engine frontend UI/UX stack
+Project surface: Dexterpreter frontend UI/UX stack
 Target reader: successor AI agent plus human reviewer
 
 ## Executive summary
 
-A stacked draft pull request series was created for the Spanish Whisper Engine frontend. The stack adds theme support, core UI controls, follow/readalong controls, sticky waveform polish, confirmation-dialog preparation, a confirmation-wiring plan, waveform accessibility/theme support, and export/editor accessibility polish.
+A stacked draft pull request series was created for the Dexterpreter frontend. The stack adds theme support, core UI controls, follow/readalong controls, sticky waveform polish, confirmation-dialog preparation, a confirmation-wiring plan, waveform accessibility/theme support, and export/editor accessibility polish.
 
 The stack is useful but **not validated locally**. Every runtime claim must be checked with a local checkout before merge. The most fragile blocker is `frontend/src/App.tsx`: it is a large monolithic component, connector reads were truncated, and connector writes require whole-file replacement. Do not perform blind `App.tsx` surgery through connector-only tooling.
 
@@ -70,7 +70,7 @@ Evidence not available or not performed:
 
 ## Project identity
 
-Spanish Whisper Engine is the frontend application in `westkitty/spanish_translator`. From inspected files and PR bodies, it appears to be a local/offline React + Vite + TypeScript transcription/review UI using Transformers.js and Capacitor-adjacent dependencies. The UI supports Spanish transcription, English translation, transcript editing, waveform playback/scrubbing, exports, project/library storage, microphone recording, glossary options, and evaluation scripts.
+Dexterpreter is the frontend application in `westkitty/spanish_translator`. From inspected files and PR bodies, it appears to be a local/offline React + Vite + TypeScript transcription/review UI using Transformers.js and Capacitor-adjacent dependencies. The UI supports Spanish transcription, English translation, transcript editing, waveform playback/scrubbing, exports, project/library storage, microphone recording, glossary options, and evaluation scripts.
 
 Confidence: confirmed for repository/frontend/package scripts and the directly touched UI surfaces; inferred for broader product framing from component names and existing UI copy.
 

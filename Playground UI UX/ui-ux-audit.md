@@ -1,4 +1,4 @@
-# Spanish Whisper Engine — UI/UX Audit
+# Dexterpreter — UI/UX Audit
 
 **Auditor:** Claude Code (senior UI/UX auditor + frontend engineer)
 **Date:** 2026-06-07

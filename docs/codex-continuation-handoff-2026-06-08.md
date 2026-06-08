@@ -7,7 +7,7 @@ Base branch to create from: `feature/ui-stack-handoff`
 
 ## Paste this prompt into Codex
 
-You are Codex taking over the `westkitty/spanish_translator` project after a ChatGPT GitHub-connector UI/UX pass. Your job is to validate, finish, and prepare the stacked Spanish Whisper Engine frontend PR series for merge. Be conservative, source-grounded, and exact. Do not claim anything works until you run the commands or manually verify it.
+You are Codex taking over the `westkitty/spanish_translator` project after a ChatGPT GitHub-connector UI/UX pass. Your job is to validate, finish, and prepare the stacked Dexterpreter frontend PR series for merge. Be conservative, source-grounded, and exact. Do not claim anything works until you run the commands or manually verify it.
 
 ### Mission
 

@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Spanish Caption Engine</string>
-    <string name="title_activity_main">Spanish Caption Engine</string>
-    <string name="package_name">com.spanishcaptionengine.app</string>
-    <string name="custom_url_scheme">com.spanishcaptionengine.app</string>
+    <string name="app_name">Dexterpreter</string>
+    <string name="title_activity_main">Dexterpreter</string>
+    <string name="package_name">io.github.westkitty.dexterpreter</string>
+    <string name="custom_url_scheme">io.github.westkitty.dexterpreter</string>
 </resources>

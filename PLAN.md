@@ -1,68 +1,60 @@
-# Mobile-First Spanish Audio Transcription & Caption Engine - Development Plan
+# Dexterpreter 1.0.0 Release Roadmap
 
-This document details the folder structure and step-by-step development process for the fully offline audio transcription and caption editing application.
+Dexterpreter is the release identity for the local/offline transcription and
+translation app. Version 1.0.0 supports Spanish audio to Spanish transcript to
+English translation.
 
-## Directory Structure
+## Release Identity
 
-```
-/Users/andrew/Spanish offline transliter./
-├── backend/
-│   ├── app/
-│   │   ├── __init__.py
-│   │   ├── main.py             # FastAPI App, local db state & upload endpoints
-│   │   ├── config.py           # Application Settings (Offline configurations)
-│   │   ├── tasks.py            # Local Background Tasks (audio processing, merging, silence)
-│   │   ├── audio_utils.py      # FFmpeg wrappers (downsampling, overlapping slice, silence)
-│   │   └── transcription.py    # Pluggable local offline transcription engine
-│   ├── tests/
-│   │   └── test_merge.py       # Timestamp offset merge verification
-│   └── requirements.txt        # Python Packages
-│
-├── frontend/
-│   ├── public/
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── AudioCanvas.tsx    # HTML5 Canvas visual audio wave & scrubbing
-│   │   │   ├── CaptionEditor.tsx  # Virtualized list of visible words & input box
-│   │   │   ├── FileSelector.tsx   # Mobile chunk file upload, localStorage cache, retry
-│   │   │   └── CaptionExport.tsx  # SRT/VTT/JSON caption export
-│   │   ├── hooks/
-│   │   │   ├── useAudioPlayer.ts  # Playback syncing to visual canvas position
-│   │   │   └── useChunkUploader.ts# Blob.slice upload loop & state tracking
-│   │   ├── App.tsx             # Responsive touch-first container
-│   │   ├── index.css           # CSS variables, Tailwind styles & custom scrollbars
-│   │   └── main.tsx            # React 19 entry
-│   ├── package.json
-│   ├── tsconfig.json
-│   ├── tailwind.config.js
-│   └── vite.config.ts
-│
-└── PLAN.md                     # This Plan File
+- Product name: Dexterpreter
+- Package ID: `io.github.westkitty.dexterpreter`
+- NPM package: `dexterpreter-client`
+- Version: `1.0.0`
+- Tag: `v1.0.0`
+- Short description: Offline audio transcription and translation. No cloud. No
+  nonsense.
+
+## Source Of Truth
+
+- Active web app: `frontend/`
+- Active Android project: `frontend/android/`
+- Release artifacts: `dist/release/`
+- README media: `docs/images/readme/`
+- Branding source: `assets/branding/`
+
+Generated root-level Android and iOS trees are not release sources.
+
+## Validation Gates
+
+Run from `frontend/` unless noted:
+
+```bash
+npm install
+npm run build
+npm run test
+npm run eval:gate || true
+npx cap sync android
+cd android
+./gradlew clean assembleRelease || ./gradlew clean assembleDebug
 ```
 
-## Step-by-Step Execution Plan
+`eval:gate` is not accuracy validation until non-demo reference fixtures are
+present and scored in the aggregate.
 
-### Phase 1: Setup & Backend Foundations
-1. Initialize `/backend` folder structure.
-2. Implement local database state tracking using SQLite/SQLAlchemy to keep track of uploaded chunks and background worker status.
-3. Write `audio_utils.py` incorporating FFmpeg commands for downsampling to 16kHz WAV mono, silence detection, and 20-minute chunk slicing with a 10-second overlap.
+## Signing Hygiene
 
-### Phase 2: Transcription Engine & Boundary Merging
-1. Develop `transcription.py` containing:
-   - A pluggable local model loader.
-   - An offline mock translation generator that parses audio files and generates detailed word-level timestamp Spanish texts, matching silence ranges to filter out hallucinations.
-2. Write merging arithmetic in `tasks.py` to compile chunks across the 10-second boundaries by tracking rolling time offsets.
-3. Build FastAPI endpoints for chunked uploading, job triggering, and progress tracking in `main.py`.
+Release signing must use local environment variables:
 
-### Phase 3: Frontend Foundations & Ingestion
-1. Initialize `/frontend` using React 19 + TypeScript + Tailwind CSS (via PostCSS).
-2. Develop the chunk uploader hook (`useChunkUploader.ts`) using the client-side `Blob.slice()` API. Ensure it tracks and caches upload indices in `localStorage` to resume from network interruptions.
+- `DEXTERPRETER_RELEASE_STORE_FILE`
+- `DEXTERPRETER_RELEASE_STORE_PASSWORD`
+- `DEXTERPRETER_RELEASE_KEY_ALIAS`
+- `DEXTERPRETER_RELEASE_KEY_PASSWORD`
 
-### Phase 4: Touch Canvas Timeline & Virtual Editor
-1. Create `AudioCanvas.tsx` utilizing HTML5 Canvas to render the audio wave ribbon and handle swipe scrubbing events.
-2. Develop `CaptionEditor.tsx` implementing virtual text rendering to display only words that fall within the active timeline viewport.
-3. Hook up native mobile keyboard inputs and configure caption exports for SRT, VTT, and JSON.
+No keystores or signing secrets belong in the repository.
 
-### Phase 5: Integration & Verification
-1. Run local integration checks between backend and frontend.
-2. Conduct QA testing on mock viewports.
+## Remaining Manual Release Steps
+
+1. Rename the GitHub repository if desired.
+2. Publish tag `v1.0.0`.
+3. Upload the prepared APK and SHA-256 checksum file to the GitHub release.
+4. Capture a real device demo if the synthetic storyboard is not enough.

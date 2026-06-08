@@ -1,4 +1,4 @@
-# Spanish Whisper Engine — Accuracy Improvement Roadmap
+# Dexterpreter — Accuracy Improvement Roadmap
 
 Staged plan to raise Spanish transcription + English translation accuracy while
 preserving the core principle: **all audio and models stay on-device; no server,

@@ -7,7 +7,7 @@ export interface ThemeOption {
   swatches: string[];
 }
 
-export const THEME_STORAGE_KEY = 'spanish-whisper-theme';
+export const THEME_STORAGE_KEY = 'dexterpreter-theme';
 
 export const themes: ThemeOption[] = [
   {

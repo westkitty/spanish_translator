@@ -1,11 +1,11 @@
-# Spanish Whisper Engine UI/UX + Large File + Theme Handoff
+# Dexterpreter UI/UX + Large File + Theme Handoff
 
 Date: 2026-06-08
 Repository: `westkitty/spanish_translator`
 
 ## Current repository read
 
-Spanish Whisper Engine is a local-first React/Capacitor app for on-device Spanish audio transcription and English translation. The app is intentionally serverless: audio is decoded locally, passed to a Web Worker, transcribed with Transformers.js/ONNX Runtime, translated with an on-device Opus-MT Spanish-to-English model, edited in the UI, saved locally, and exported.
+Dexterpreter is a local-first React/Capacitor app for on-device Spanish audio transcription and English translation. The app is intentionally serverless: audio is decoded locally, passed to a Web Worker, transcribed with Transformers.js/ONNX Runtime, translated with an on-device Opus-MT Spanish-to-English model, edited in the UI, saved locally, and exported.
 
 Current high-value architecture already present:
 

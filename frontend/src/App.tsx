@@ -41,8 +41,8 @@ import { saveBlobFile, saveTextFile } from './lib/fileSave';
 import { getStoredFlag, setStoredFlag } from './lib/storage';
 import { availableTiers, defaultModel, type WhisperModel } from './lib/models';
 
-const WELCOME_SEEN_KEY = 'spanish-whisper-seen-welcome';
-const RESULT_TIP_SEEN_KEY = 'spanish-whisper-seen-result-tip';
+const WELCOME_SEEN_KEY = 'dexterpreter-seen-welcome';
+const RESULT_TIP_SEEN_KEY = 'dexterpreter-seen-result-tip';
 
 export default function App() {
   const confirmDialog = useConfirmDialog();
@@ -497,10 +497,10 @@ export default function App() {
           </div>
           <div>
             <h1 className="text-sm md:text-base font-extrabold tracking-tight bg-gradient-to-r from-sky-300 to-blue-400 bg-clip-text text-transparent">
-              Spanish Whisper Engine
+              Dexterpreter
             </h1>
             <p className="text-[11px] font-medium" style={{ color: 'var(--text-subtle)' }}>
-              On-Device · No Server · Offline
+              Spanish now · More languages later · No cloud
             </p>
           </div>
         </div>
@@ -650,7 +650,7 @@ export default function App() {
                   </label>
                   <p className="text-[11px] flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
                     <Languages className="w-3 h-3 text-sky-300" />
-                    Outputs a Spanish transcript <span style={{ color: 'var(--text-subtle)' }}>+</span> English translation automatically.
+                    Current pipeline: Spanish audio to Spanish transcript <span style={{ color: 'var(--text-subtle)' }}>+</span> English translation.
                   </p>
                   <AdvancedOptions
                     vocab={vocab}
@@ -692,7 +692,7 @@ export default function App() {
               {done && (
                 <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: 'var(--warn-border)', background: 'var(--warn-bg)' }}>
                   <p className="text-[11px]" style={{ color: 'var(--warn)' }}>
-                    Re-run keeps this file selected so you can change the model or options. It will replace the current transcript, translation, and edits.
+                    Re-run keeps this file selected so you can change the model or options. It will replace the current Spanish transcript, English translation, and edits.
                   </p>
                   <button
                     onClick={handleRerun}
@@ -935,7 +935,7 @@ export default function App() {
 
       {/* ── Footer ─────────────────────────────────────────────────────────── */}
       <footer className="relative z-10 text-[11px] text-center py-1.5 mt-auto flex items-center justify-center gap-1 font-mono" style={{ color: 'var(--text-subtle)' }}>
-        <Info className="w-3 h-3" /> On-Device Spanish Whisper &bull; Offline &bull; No Server
+        <Info className="w-3 h-3" /> Dexterpreter &bull; On-device &bull; No cloud
       </footer>
     </div>
   );

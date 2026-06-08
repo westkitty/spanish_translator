@@ -23,7 +23,7 @@ export interface StoredProject {
 
 export type ProjectMeta = Omit<StoredProject, 'audioBlob' | 'words' | 'translation'>;
 
-const DB_NAME = 'spanish-whisper';
+const DB_NAME = 'dexterpreter';
 const STORE = 'projects';
 const VERSION = 1;
 

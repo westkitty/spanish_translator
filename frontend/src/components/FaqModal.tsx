@@ -16,7 +16,7 @@ interface FaqItem {
 const FAQS: FaqItem[] = [
   {
     q: 'What does this app do?',
-    a: 'Pick a Spanish audio file and it produces a word-timestamped Spanish transcript plus an English translation. You can play the audio, edit words inline, and export everything.',
+    a: 'Dexterpreter currently takes Spanish audio and produces a word-timestamped Spanish transcript plus an English translation. You can play the audio, edit words inline, and export everything.',
   },
   {
     q: 'Is my audio private?',
@@ -47,8 +47,12 @@ const FAQS: FaqItem[] = [
     a: 'The app itself is small (~8 MB). After the one-time model download the total on-device footprint is roughly ~95 MB.',
   },
   {
+    q: 'Does it support other languages?',
+    a: 'Not in this release. The architecture is language-expandable, but version 1.0.0 ships the Spanish-to-English path only. Hype declined.',
+  },
+  {
     q: 'How do I edit and export?',
-    a: 'Tap any Spanish word to edit it and seek the audio to that point. Use the Export panel to save a TXT or timed JSON file, or copy the transcript and translation to your clipboard.',
+    a: 'Tap any Spanish word to edit it and seek the audio to that point. Use the Export panel to save text, subtitles, CSV, JSON, or copy the transcript and translation to your clipboard.',
   },
   {
     q: 'Can I use it with no signal, like on a plane?',

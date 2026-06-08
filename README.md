@@ -1,110 +1,286 @@
-# Spanish Whisper Engine — On-Device Audio Transcription
+---
+[![Dexterpreter banner](docs/images/readme/banner.webp)](https://github.com/westkitty/spanish_translator)
 
-A fully **offline, on-device** Spanish audio transcription app. Pick an audio file,
-and Whisper runs **inside the app** (no server, no API, no uploads) to produce a
-word-timestamped Spanish transcript **and** an English translation — automatically,
-every run. Scrub, edit, and export both.
+---
 
-## How it works
+<div align="center">
 
-- **On-device Whisper** via [Transformers.js](https://github.com/huggingface/transformers.js)
-  (ONNX Runtime / WebAssembly). The audio never leaves the device.
-- **No backend.** There is no server to run. The previous FastAPI/mock backend has
-  been removed entirely — all inference happens in the WebView.
-- **Audio pipeline:** the file is decoded to 16 kHz mono PCM with the Web Audio API,
-  then transcribed in a Web Worker so the UI stays responsive.
-- **Offline after first run:** the model (~45–85 MB) downloads once from the Hugging
-  Face hub and is cached in the browser Cache API. The ONNX runtime itself is bundled
-  in the app. After the first transcription, no network is ever needed.
+![Version](https://img.shields.io/badge/version-1.0.0-38bdf8)
+![Offline](https://img.shields.io/badge/offline-first-22c55e)
+![Telemetry](https://img.shields.io/badge/telemetry-none-64748b)
+![Platform](https://img.shields.io/badge/platform-Android-0f172a)
 
-## Models & footprint
+</div>
 
-The model is chosen by a **quality tier**. Each tier downloads once and is cached
-independently, so switching tiers only downloads the new one.
+<p align="center">
+Offline audio transcription and translation.
+</p>
+<p align="center">
+No cloud. No telemetry. No nonsense.
+</p>
 
-| Tier | Model | Backend | On-device size |
-|------|-------|---------|----------------|
-| Fast | `Xenova/whisper-tiny` | WASM / WebGPU | ~45 MB |
-| Balanced (default) | `Xenova/whisper-base` | WASM / WebGPU | ~85 MB |
-| Accurate (recommended) | `Xenova/whisper-small` | WASM / WebGPU | ~250 MB |
-| Best | `onnx-community/whisper-large-v3-turbo` | **WebGPU only** | large |
+<div align="center">
+  <img src="assets/dexterpreter-icon.png" width="128" height="128" alt="Dexterpreter icon" />
+</div>
 
-**Quantization is per-backend** (see `src/lib/models.ts`):
+<p align="center">Dexter understands you.</p>
+<p align="center">Unfortunately.</p>
 
-- **WASM/CPU** (universal fallback): the quantization-sensitive **encoder runs at
-  fp32**, the tolerant decoder at q8. Keeping the encoder full-precision is the
-  single biggest accuracy fix — q8 on the encoder was the previous default and
-  badly degraded Spanish recognition.
-- **WebGPU** (when the device supports it): **fp16** throughout — faster and far
-  more accurate than q8, which is what makes the Accurate/Best tiers practical.
+---
 
-The **Best** tier is only offered on WebGPU-capable devices (recent Android 12+
-Chromium WebView / desktop Chrome, Firefox, Safari, Edge).
+<h2 align="center">Dexterpreter</h2>
 
-Total installed footprint is roughly **~100 MB** with the Balanced tier (app +
-ONNX runtime + base model), more with larger tiers.
+---
 
-Each run produces both outputs:
+## What This Is
 
-- **Spanish transcript:** Whisper `task: transcribe` → word-level Spanish text that
-  drives the timeline and editor.
-- **English translation:** the finished Spanish transcript is split into sentences
-  and translated by a dedicated on-device **Opus-MT (`Xenova/opus-mt-es-en`)**
-  model — more fluent and adequate than Whisper's built-in `translate` task, and
-  it removes a whole inference pass per window (≈2× faster transcription). The
-  translator (~40 MB, q8) downloads once and is cached like the Whisper model.
+Dexterpreter is a local/offline audio transcription and translation app. Version
+1.0.0 supports the Spanish path:
 
-## Project structure
+1. Spanish audio in.
+2. Spanish transcript out.
+3. English translation out.
 
-```
-frontend/
-├── src/
-│   ├── App.tsx                       # UI: file pick → transcribe → edit → export
-│   ├── lib/
-│   │   ├── audio.ts                  # File → 16 kHz mono PCM (Web Audio API)
-│   │   └── transcriber.worker.ts     # Whisper inference Web Worker (Transformers.js)
-│   ├── hooks/
-│   │   ├── useTranscriber.ts         # Decode + worker orchestration + progress
-│   │   └── useAudioPlayer.ts         # Playback synced to the timeline
-│   └── components/
-│       ├── AudioCanvas.tsx           # Waveform / scrub timeline
-│       ├── CaptionEditor.tsx         # Virtualized Spanish word editor
-│       ├── TranslationPanel.tsx      # Read-only English translation (click to seek)
-│       └── CaptionExport.tsx         # TXT / timed-JSON / clipboard (transcript + translation)
-├── android/                          # Capacitor Android project
-└── capacitor.config.ts
-```
+The product is not permanently Spanish-branded. The architecture is meant to
+grow into additional language paths without turning the app into a cloud
+translator wearing a suspicious hat.
 
-## Getting started (web / development)
+## Demo
+
+![Dexterpreter demo](docs/images/readme/dexterpreter-demo.gif)
+
+The demo uses synthetic UI frames and synthetic text only. No private audio, no
+personal screenshots, no local metadata.
+
+## Install
+
+When `v1.0.0` is published, download the Android package from the
+[GitHub Releases page](https://github.com/westkitty/spanish_translator/releases).
+
+Release artifacts prepared by this repository use these names:
+
+- `Dexterpreter-1.0.0-android.apk` for a signed release APK, when local signing
+  credentials are supplied.
+- `Dexterpreter-1.0.0-android-unsigned.apk` when a release APK is built without
+  local signing credentials.
+- `Dexterpreter-1.0.0-android-debug.apk` when only a debug build is available.
+- `Dexterpreter-1.0.0-SHA256SUMS.txt` for checksums.
+
+Android may ask you to allow installing an app from the browser or file manager.
+That is normal for sideloaded APKs. Read the prompt. Then read it again, because
+Android likes ceremony.
+
+## Requirements
+
+- Android device with a modern WebView.
+- Enough storage for the app, ONNX runtime, Whisper model, and translation model.
+- Internet once on first launch to cache the model files.
+- No backend. No account. No server pretending to be local.
+
+## First Launch
+
+The first transcription downloads the selected Whisper model once. The default
+balanced model is about 85 MB. The Spanish-to-English translation model is also
+cached locally.
+
+After the models are cached, transcription and translation run offline. If you
+clear app storage, reinstall the app, or choose a model tier that has not been
+cached yet, Dexterpreter will need network access once again for that model.
+
+## Current Language Support
+
+Current release support is deliberately narrow:
+
+- Spanish audio transcription.
+- Editable Spanish transcript.
+- English translation from the Spanish transcript.
+
+Other source languages are not complete in version 1.0.0. The code is structured
+for expansion, but this release ships Spanish-to-English. Marketing has been
+kept on a short leash.
+
+## Full Feature List
+
+- Local file import for common audio formats.
+- Microphone recording permission flow.
+- On-device Whisper transcription through Transformers.js and ONNX Runtime.
+- Word-timestamped transcript editing.
+- Spanish punctuation restoration.
+- Sentence review and read-along controls.
+- Waveform playback, scrubbing, loop controls, and selected-region re-run.
+- Local project library using browser storage.
+- Export to text, SubRip subtitles (SRT), Web Video Text Tracks (VTT), bilingual
+  subtitles, comma-separated values (CSV), and timed JSON.
+- Clipboard copy for transcript and translation.
+- Theme controls and accessibility-focused keyboard improvements.
+
+## Privacy & Security
+
+Audio stays on-device. Dexterpreter does not upload audio, transcripts,
+translations, project data, or usage data.
+
+The app has no analytics, telemetry, tracking, account system, backend, cloud
+application programming interface (API), or remote job queue.
+
+Release signing credentials are not committed. Local signing is configured with
+environment variables only.
+
+## Offline Model Cache
+
+Dexterpreter caches model files in local browser/WebView storage. Cached models
+are reused for later runs.
+
+Model tiers:
+
+| Tier | Model | Approximate cache |
+|---|---|---:|
+| Fast | `Xenova/whisper-tiny` | 45 MB |
+| Balanced | `Xenova/whisper-base` | 85 MB |
+| Accurate | `Xenova/whisper-small` | 250 MB |
+
+The translation path uses `Xenova/opus-mt-es-en`.
+
+## Export Formats
+
+- Plain text: Spanish transcript plus English translation.
+- SRT and VTT subtitles.
+- Bilingual subtitle output.
+- CSV word timing export.
+- Timed JSON.
+- Clipboard copy.
+
+## Build From Source
 
 ```bash
-cd frontend
+cd <repo>/frontend
 npm install
-npm run dev      # http://localhost:3000
+npm run build
 ```
 
-Build the production web assets:
+Development server:
 
 ```bash
-npm run build    # outputs to frontend/dist
+cd <repo>/frontend
+npm run dev
 ```
 
-## Android build
+## Android Release Build
+
+Debug APK:
 
 ```bash
-cd frontend
+cd <repo>/frontend
+npm install
 npm run build
 npx cap sync android
-cd android && ./gradlew assembleRelease
-# → app/build/outputs/apk/release/app-release.apk
+cd android
+./gradlew assembleDebug
 ```
 
-> **Note:** `npx cap sync` regenerates `android/app/capacitor.build.gradle` targeting
-> Java 21. If you build with JDK 17, reset its `sourceCompatibility`/`targetCompatibility`
-> to `VERSION_17` before `assembleRelease`.
+Unsigned release APK:
 
-## First-run requirement
+```bash
+cd <repo>/frontend
+npm install
+npm run build
+npx cap sync android
+cd android
+./gradlew assembleRelease
+```
 
-The very first transcription needs internet **once** to download the Whisper model
-(~85 MB for base). After that the app is fully offline forever. There is no server
-to set up — ever.
+The unsigned artifact prepared in `dist/release/` is
+`Dexterpreter-1.0.0-android-unsigned.apk`. Sign it locally before treating it as
+a final public release package.
+
+Locally signed release APK:
+
+```bash
+cd <repo>/frontend
+export DEXTERPRETER_RELEASE_STORE_FILE=~/path/to/repo-private/release.keystore
+export DEXTERPRETER_RELEASE_STORE_PASSWORD=...
+export DEXTERPRETER_RELEASE_KEY_ALIAS=...
+export DEXTERPRETER_RELEASE_KEY_PASSWORD=...
+npm install
+npm run build
+npx cap sync android
+cd android
+./gradlew assembleRelease
+```
+
+Do not commit keystores, passwords, or signing credentials. Basic, yes. Still
+apparently necessary.
+
+## Development Workflow
+
+```bash
+cd <repo>/frontend
+npm install
+npm run build
+npm run test
+npm run eval:gate
+```
+
+`eval:gate` currently excludes the demo fixture from aggregate scoring. Treat it
+as an evaluation harness check unless real reference fixtures are added.
+
+## Repository Layout
+
+```text
+frontend/
+  src/                 React and TypeScript app
+  src/lib/             Audio, export, model, storage, and inference helpers
+  android/             Active Capacitor Android project
+docs/
+  images/readme/       Synthetic README media
+assets/
+  branding/            Canonical Dexterpreter branding
+dist/release/          Prepared release artifacts
+```
+
+Root-level generated `android/` and `ios/` trees are intentionally not used as
+the build source of truth.
+
+## Validation
+
+Release validation should include:
+
+- `npm run build`
+- `npm run test`
+- `npm run eval:gate`
+- `npx cap sync android`
+- `./gradlew clean assembleRelease` or `./gradlew clean assembleDebug`
+- SHA-256 checksum generation for produced APKs
+
+Do not claim signed release validation unless a locally signed APK was actually
+built.
+
+## Troubleshooting
+
+If first launch appears stuck, check the model download and network connection.
+If later offline runs fail, confirm app storage was not cleared.
+
+If Android release signing fails, confirm the four
+`DEXTERPRETER_RELEASE_*` environment variables point to local, uncommitted
+credentials.
+
+If accuracy is poor, try the Accurate model tier and review the transcript
+before judging the English translation. Bad input produces bad output. It is
+not a philosophical event.
+
+## Roadmap
+
+- Real release-device demo capture.
+- Non-demo accuracy fixtures for `eval:gate`.
+- Additional language paths after the Spanish-to-English path is stable.
+- Better model cache controls.
+- Signed release publishing for `v1.0.0`.
+
+## License
+
+No license file is currently present in this repository. Add one before making
+broad reuse claims.
+
+## Final Note
+
+Dexterpreter is local software for local work. It listens, writes down what it
+heard, translates it, and does not phone anyone about it.
