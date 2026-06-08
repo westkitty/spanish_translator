@@ -111,11 +111,12 @@ export function CaptionEditor({
           <div className="h-full flex flex-col items-center justify-center text-center p-6" style={{ color: 'var(--text-subtle)' }}>
             <p className="text-xs">No words in this timeline segment.</p>
             <button
+              type="button"
               onClick={() => onSeek(captions[0]?.start || 0)}
-              className="mt-2 text-xs flex items-center gap-1 active:scale-95 transition-transform"
+              className="mt-2 text-xs flex items-center gap-1 active:scale-95 transition-transform min-h-[44px] px-2"
               style={{ color: 'var(--accent-bright)' }}
             >
-              <RotateCcw className="w-3.5 h-3.5" /> Jump to first word
+              <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" /> Jump to first word
             </button>
           </div>
         ) : (
@@ -130,7 +131,7 @@ export function CaptionEditor({
                     key={word.id}
                     className="inline-flex items-center rounded px-1.5 py-0.5 shadow-md animate-fade-in"
                     style={{
-                      background: 'rgba(2,8,23,0.7)',
+                      background: 'var(--glass-bg-strong)',
                       border: '1px solid var(--accent)',
                     }}
                   >
@@ -140,57 +141,58 @@ export function CaptionEditor({
                       value={editValue}
                       onChange={(e) => setEditValue(e.target.value)}
                       onKeyDown={(e) => handleKeyDown(e, word.id)}
+                      aria-label={`Edit word ${word.text}`}
                       className="bg-transparent text-xs font-medium focus:outline-none w-20 px-0.5"
                       style={{ color: 'var(--text)' }}
                     />
                     {/* Check and X buttons have 44px touch targets via min dimensions */}
                     <button
+                      type="button"
                       onClick={() => handleSave(word.id)}
                       aria-label="Save edit"
                       className="min-w-[44px] min-h-[44px] flex items-center justify-center active:scale-90 transition-transform"
-                      style={{ color: 'var(--text-muted)' }}
-                      onMouseEnter={(e) => (e.currentTarget.style.color = '#34d399')}
-                      onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+                      style={{ color: 'var(--trans)' }}
                     >
-                      <Check className="w-3.5 h-3.5" />
+                      <Check className="w-3.5 h-3.5" aria-hidden="true" />
                     </button>
                     <button
+                      type="button"
                       onClick={() => setEditingId(null)}
                       aria-label="Cancel edit"
                       className="min-w-[44px] min-h-[44px] flex items-center justify-center active:scale-90 transition-transform"
-                      style={{ color: 'var(--text-muted)' }}
-                      onMouseEnter={(e) => (e.currentTarget.style.color = '#fb7185')}
-                      onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+                      style={{ color: '#fb7185' }}
                     >
-                      <X className="w-3.5 h-3.5" />
+                      <X className="w-3.5 h-3.5" aria-hidden="true" />
                     </button>
                   </div>
                 );
               }
 
               return (
-                <span
+                <button
                   key={word.id}
+                  type="button"
                   onClick={() => handleWordClick(word)}
-                  className="cursor-pointer px-1 py-0.5 rounded transition-all duration-200 select-none text-xs"
+                  className="caption-word-chip cursor-pointer px-1 py-0.5 rounded transition-all duration-200 select-none text-xs text-left"
                   style={
                     isActive
                       ? {
                           background: 'var(--accent-bg)',
-                          color: '#bae6fd',
+                          color: 'var(--accent-bright)',
                           fontWeight: 700,
                           border: '1px solid var(--accent-border)',
                         }
                       : {
                           color: 'var(--text-muted)',
-                          background: 'rgba(255,255,255,0.04)',
-                          border: '1px solid rgba(255,255,255,0.08)',
+                          background: 'var(--control-bg)',
+                          border: '1px solid var(--border)',
                         }
                   }
                   title={`[${word.start.toFixed(2)}s – ${word.end.toFixed(2)}s] Click to edit`}
+                  aria-label={`Edit word ${word.text} at ${word.start.toFixed(2)} seconds`}
                 >
                   {word.text}
-                </span>
+                </button>
               );
             })}
           </div>
@@ -200,7 +202,7 @@ export function CaptionEditor({
       {/* Footer hint */}
       {captions.length > 0 && (
         <div className="mt-3 pt-3 border-t border-white/10 text-[11px] text-center font-mono" style={{ color: 'var(--text-subtle)' }}>
-          Tap a word to edit and seek. Only words near the playhead are shown.
+          Tap, click, or tab to a word to edit and seek. Only words near the playhead are shown.
         </div>
       )}
     </div>

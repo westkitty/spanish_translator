@@ -1,0 +1,31 @@
+.translation-follow-toggle {
+  min-height: 32px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--control-bg);
+  color: var(--text-muted);
+  padding: 0.25rem 0.65rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.translation-follow-toggle:hover {
+  background: var(--control-hover-bg);
+  color: var(--text);
+}
+
+.translation-follow-toggle[aria-pressed='true'] {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  color: var(--accent-bright);
+}
+
+@media (max-width: 520px) {
+  .translation-follow-toggle {
+    width: 100%;
+    justify-content: center;
+  }
+}

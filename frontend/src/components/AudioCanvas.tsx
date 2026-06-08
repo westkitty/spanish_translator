@@ -17,6 +17,19 @@ interface AudioCanvasProps {
   onSelectRange?: (range: { start: number; end: number }) => void;
 }
 
+function readCssVar(name: string, fallback: string): string {
+  if (typeof window === 'undefined') return fallback;
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return value || fallback;
+}
+
+function formatAriaTime(seconds: number): string {
+  const safeSeconds = Math.max(0, seconds);
+  const mins = Math.floor(safeSeconds / 60);
+  const secs = Math.floor(safeSeconds % 60);
+  return `${mins} minutes ${secs} seconds`;
+}
+
 export function AudioCanvas({
   duration,
   currentTime,
@@ -33,6 +46,11 @@ export function AudioCanvas({
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [draftSelection, setDraftSelection] = useState<{ start: number; end: number } | null>(null);
 
+  const seekBy = (deltaSeconds: number) => {
+    if (duration <= 0) return;
+    onSeek(Math.max(0, Math.min(duration, currentTime + deltaSeconds)));
+  };
+
   const timeFromClientX = (clientX: number) => {
     const canvas = canvasRef.current;
     if (!canvas || duration <= 0) return 0;
@@ -44,6 +62,7 @@ export function AudioCanvas({
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (duration <= 0) return;
+    e.currentTarget.focus();
     e.currentTarget.setPointerCapture(e.pointerId);
     setIsScrubbing(true);
     const time = timeFromClientX(e.clientX);
@@ -86,6 +105,31 @@ export function AudioCanvas({
     setDraftSelection(null);
   };
 
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLCanvasElement>) => {
+    if (duration <= 0) return;
+
+    switch (event.key) {
+      case 'ArrowLeft':
+        event.preventDefault();
+        seekBy(event.shiftKey ? -15 : -5);
+        break;
+      case 'ArrowRight':
+        event.preventDefault();
+        seekBy(event.shiftKey ? 15 : 5);
+        break;
+      case 'Home':
+        event.preventDefault();
+        onSeek(0);
+        break;
+      case 'End':
+        event.preventDefault();
+        onSeek(duration);
+        break;
+      default:
+        break;
+    }
+  };
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -105,15 +149,26 @@ export function AudioCanvas({
     const render = () => {
       const w = canvas.width / (window.devicePixelRatio || 1);
       const h = canvas.height / (window.devicePixelRatio || 1);
+      const canvasBg = readCssVar('--canvas-bg', '#08111f');
+      const centerline = readCssVar('--waveform-centerline', 'rgba(255,255,255,0.06)');
+      const playedColor = readCssVar('--accent-played', 'rgba(56,189,248,0.95)');
+      const unplayedColor = readCssVar('--accent-unplayed', 'rgba(56,189,248,0.38)');
+      const placeholderColor = readCssVar('--waveform-placeholder', 'rgba(56,189,248,0.22)');
+      const silenceColor = readCssVar('--waveform-silence', 'rgba(148,163,184,0.14)');
+      const selectionFill = readCssVar('--waveform-selection-fill', 'rgba(251,191,36,0.14)');
+      const selectionStroke = readCssVar('--waveform-selection-stroke', 'rgba(252,211,77,0.7)');
+      const playheadColor = readCssVar('--waveform-playhead', 'rgba(56,189,248,0.9)');
+      const playheadShadow = readCssVar('--waveform-playhead-shadow', 'rgba(56,189,248,0.6)');
+      const knobColor = readCssVar('--waveform-knob', '#ffffff');
 
       ctx.clearRect(0, 0, w, h);
 
       // Background
-      ctx.fillStyle = '#08111f';
+      ctx.fillStyle = canvasBg;
       ctx.fillRect(0, 0, w, h);
 
       // Horizontal centerline
-      ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+      ctx.strokeStyle = centerline;
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(0, h / 2);
@@ -123,16 +178,16 @@ export function AudioCanvas({
       const progress = duration > 0 ? currentTime / duration : 0;
       const playheadX = progress * w;
 
-      // Selection / draft region (amber)
+      // Selection / draft region
       const activeSelection = draftSelection ?? selection;
       if (activeSelection && duration > 0) {
         const selStart = Math.min(activeSelection.start, activeSelection.end);
         const selEnd = Math.max(activeSelection.start, activeSelection.end);
         const startX = (selStart / duration) * w;
         const endX = (selEnd / duration) * w;
-        ctx.fillStyle = 'rgba(251,191,36,0.14)';
+        ctx.fillStyle = selectionFill;
         ctx.fillRect(startX, 0, Math.max(2, endX - startX), h);
-        ctx.strokeStyle = 'rgba(252,211,77,0.7)';
+        ctx.strokeStyle = selectionStroke;
         ctx.lineWidth = 1;
         ctx.strokeRect(startX, 0.5, Math.max(2, endX - startX), h - 1);
       }
@@ -176,17 +231,14 @@ export function AudioCanvas({
         const isPlayed = barX <= playheadX;
         const inSilence = silenceAt[i] === 1;
 
-        // Color: azure played vs azure unplayed; silence regions are very dim.
-        let baseAlpha: number;
         if (inSilence) {
-          baseAlpha = 0.12;
+          ctx.fillStyle = silenceColor;
         } else if (isPlayed) {
-          baseAlpha = 0.92;
+          ctx.fillStyle = playedColor;
         } else {
-          baseAlpha = hasPeaks ? 0.38 : 0.22;
+          ctx.fillStyle = hasPeaks ? unplayedColor : placeholderColor;
         }
 
-        ctx.fillStyle = `rgba(56,189,248,${baseAlpha})`;
         ctx.beginPath();
         if (ctx.roundRect) {
           ctx.roundRect(barX - barWidth / 2, yTop, barWidth, barHeight, barWidth / 2);
@@ -196,10 +248,10 @@ export function AudioCanvas({
         ctx.fill();
       }
 
-      // Playhead line (azure)
+      // Playhead line
       ctx.shadowBlur = 6;
-      ctx.shadowColor = 'rgba(56,189,248,0.6)';
-      ctx.strokeStyle = 'rgba(56,189,248,0.9)';
+      ctx.shadowColor = playheadShadow;
+      ctx.strokeStyle = playheadColor;
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.moveTo(playheadX, 0);
@@ -208,8 +260,8 @@ export function AudioCanvas({
 
       // Scrubber head
       ctx.shadowBlur = 10;
-      ctx.shadowColor = 'rgba(56,189,248,0.7)';
-      ctx.fillStyle = '#ffffff';
+      ctx.shadowColor = playheadShadow;
+      ctx.fillStyle = knobColor;
       ctx.beginPath();
       ctx.arc(playheadX, h / 2, isScrubbing ? 7 : 4.5, 0, 2 * Math.PI);
       ctx.fill();
@@ -234,10 +286,18 @@ export function AudioCanvas({
       <canvas
         ref={canvasRef}
         className="w-full h-full block cursor-pointer touch-none"
+        role="slider"
+        tabIndex={0}
+        aria-label={selectionMode ? 'Select audio region on waveform' : 'Audio waveform seek control'}
+        aria-valuemin={0}
+        aria-valuemax={Math.max(0, Math.round(duration))}
+        aria-valuenow={Math.max(0, Math.round(currentTime))}
+        aria-valuetext={`${formatAriaTime(currentTime)} of ${formatAriaTime(duration)}`}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
+        onKeyDown={handleKeyDown}
       />
       {duration <= 0 && (
         <div className="absolute inset-0 bg-[#08111f]/80 flex items-center justify-center pointer-events-none select-none">
