@@ -4,6 +4,7 @@ import App from './App';
 import { ThemePicker } from './components/ThemePicker';
 import { applyStoredTheme } from './lib/themes';
 import './index.css';
+import './theme.css';
 
 applyStoredTheme();
 
