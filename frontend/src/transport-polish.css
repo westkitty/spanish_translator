@@ -1,0 +1,42 @@
+/*
+  Transport polish, PR 4.
+
+  The player card is still authored inside App.tsx as a generic `.glass` card.
+  Until App.tsx is split or safely patched in a local checkout, target the card
+  by the distinctive AudioCanvas structure it contains.
+*/
+
+main .glass:has(canvas.touch-none) {
+  position: sticky;
+  top: 0.25rem;
+  z-index: 30;
+}
+
+main .glass:has(canvas.touch-none)::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-bright) 18%, transparent);
+}
+
+main .glass:has(canvas.touch-none) canvas {
+  scroll-margin-top: 5.5rem;
+}
+
+main .glass:has(canvas.touch-none) .border-t {
+  border-color: var(--border);
+}
+
+@media (max-height: 620px) {
+  main .glass:has(canvas.touch-none) {
+    position: static;
+  }
+}
+
+@media (max-width: 640px) {
+  main .glass:has(canvas.touch-none) {
+    top: 0;
+  }
+}
