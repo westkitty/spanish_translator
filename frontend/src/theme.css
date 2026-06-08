@@ -287,3 +287,221 @@ select:focus,
 :focus-visible {
   outline-color: var(--accent-bright);
 }
+
+.header-tools-shell {
+  position: fixed;
+  top: 0.75rem;
+  right: 4.25rem;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+@media (min-width: 768px) {
+  .header-tools-shell {
+    top: 1.5rem;
+    right: 6.6rem;
+  }
+}
+
+.header-tools-shell .theme-picker-shell {
+  position: static;
+}
+
+.shortcut-help__trigger {
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  color: var(--text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.shortcut-help__trigger:hover {
+  color: var(--text);
+  background: var(--control-hover-bg);
+}
+
+.shortcut-help__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: var(--modal-backdrop);
+}
+
+.shortcut-help__panel {
+  width: min(30rem, 100%);
+  max-height: min(32rem, calc(100svh - 2rem));
+  overflow-y: auto;
+  border-radius: 1rem;
+  padding: 1rem;
+  color: var(--text);
+  outline: none;
+}
+
+.shortcut-help__header {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 0.9rem;
+}
+
+.shortcut-help__title {
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.shortcut-help__subtitle {
+  margin-top: 0.2rem;
+  color: var(--text-subtle);
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.shortcut-help__close {
+  min-width: 36px;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.65rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.shortcut-help__close:hover {
+  color: var(--text);
+  background: var(--control-hover-bg);
+}
+
+.shortcut-help__list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.shortcut-help__row {
+  display: grid;
+  grid-template-columns: 6.5rem minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  background: var(--control-bg);
+}
+
+.shortcut-help__row kbd {
+  display: inline-flex;
+  min-height: 1.75rem;
+  align-items: center;
+  border-radius: 0.45rem;
+  border: 1px solid var(--accent-border);
+  background: var(--accent-bg);
+  color: var(--accent-bright);
+  padding: 0.1rem 0.45rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.shortcut-help__row dd {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.toast-viewport {
+  position: fixed;
+  left: 50%;
+  bottom: 1rem;
+  z-index: 70;
+  display: grid;
+  width: min(28rem, calc(100vw - 1.5rem));
+  transform: translateX(-50%);
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+.toast-card {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  border-radius: 0.9rem;
+  border: 1px solid var(--border);
+  background: var(--glass-bg-strong);
+  color: var(--text);
+  padding: 0.75rem 0.85rem;
+  box-shadow: 0 16px 48px var(--shadow-surface-strong);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.toast-card__icon {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+}
+
+.toast-card--success .toast-card__icon {
+  color: var(--trans);
+}
+
+.toast-card--warning .toast-card__icon {
+  color: var(--warn);
+}
+
+.toast-card--error .toast-card__icon {
+  color: #fb7185;
+}
+
+.toast-card--info .toast-card__icon {
+  color: var(--accent-bright);
+}
+
+.drop-upload-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 65;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: color-mix(in srgb, var(--ink-950) 72%, transparent);
+  pointer-events: none;
+}
+
+.drop-upload-overlay__card {
+  width: min(28rem, 100%);
+  border-radius: 1.1rem;
+  padding: 1.5rem;
+  color: var(--text);
+  text-align: center;
+}
+
+.drop-upload-overlay__card svg {
+  margin: 0 auto 0.6rem;
+  color: var(--accent-bright);
+}
+
+.drop-upload-overlay__card p {
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 850;
+}
+
+.drop-upload-overlay__card span {
+  display: block;
+  margin-top: 0.35rem;
+  color: var(--text-subtle);
+  font-size: 0.78rem;
+}
