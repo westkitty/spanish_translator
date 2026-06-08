@@ -10,6 +10,7 @@ import './theme.css';
 import './review-navigation.css';
 import './transport-polish.css';
 import './confirm-dialog.css';
+import './waveform.css';
 
 applyStoredTheme();
 
