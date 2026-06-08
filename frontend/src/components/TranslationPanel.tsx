@@ -48,7 +48,7 @@ export function TranslationPanel({ translation, currentTime, onSeek }: Translati
                 isActive
                   ? {
                       background: 'var(--trans-bg)',
-                      color: '#a7f3d0',
+                      color: 'var(--trans-text)',
                       border: '1px solid var(--trans-border)',
                     }
                   : {
