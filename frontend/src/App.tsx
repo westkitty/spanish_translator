@@ -30,6 +30,8 @@ import { FaqModal } from './components/FaqModal';
 import { ProgressPanel } from './components/ProgressPanel';
 import { LibraryModal } from './components/LibraryModal';
 import { AdvancedOptions } from './components/AdvancedOptions';
+import { ConfirmDialog } from './components/ConfirmDialog';
+import { useConfirmDialog } from './hooks/useConfirmDialog';
 import type { Sentence } from './lib/punctuation';
 import { newProjectId, type StoredProject } from './lib/db';
 import { decodeAudioFile, computePeaks, extractWavClip } from './lib/audio';
@@ -43,6 +45,7 @@ const WELCOME_SEEN_KEY = 'spanish-whisper-seen-welcome';
 const RESULT_TIP_SEEN_KEY = 'spanish-whisper-seen-result-tip';
 
 export default function App() {
+  const confirmDialog = useConfirmDialog();
   const [file, setFile] = useState<File | null>(null);
   const tiers = useMemo(() => availableTiers(), []);
   const [model, setModel] = useState<WhisperModel>(() => defaultModel());
@@ -290,11 +293,16 @@ export default function App() {
     return () => window.clearTimeout(t);
   }, [captions, translation, peaks, done, save]);
 
-  const handleRerun = () => {
-    const confirmed = window.confirm(
-      'Re-run this file? The current transcript, translation, and edits will be replaced.'
-    );
+  const handleRerun = async () => {
+    const confirmed = await confirmDialog.confirm({
+      title: 'Re-run this file?',
+      description:
+        'The current transcript, translation, and edits will be replaced. Your selected audio file stays loaded so you can change model or options first.',
+      confirmLabel: 'Re-run file',
+      tone: 'warning',
+    });
     if (!confirmed) return;
+
     pause();
     seek(0);
     setSelectedRange(null);
@@ -307,12 +315,17 @@ export default function App() {
     reset();
   };
 
-  const handleRegionRerun = () => {
+  const handleRegionRerun = async () => {
     if (!file || !selectedRange) return;
-    const confirmed = window.confirm(
-      'Re-run just this selected region? Words and translation in that range will be replaced.'
-    );
+
+    const confirmed = await confirmDialog.confirm({
+      title: 'Re-run selected region?',
+      description: `Words and translation between ${formatRange(selectedRange)} will be replaced. Everything outside that range will be kept.`,
+      confirmLabel: 'Re-run region',
+      tone: 'warning',
+    });
     if (!confirmed) return;
+
     setUndoStack((s) => [...s, captions]);
     setRedoStack([]);
     runRegion(file, selectedRange, runOptions);
@@ -463,6 +476,18 @@ export default function App() {
         onOpenProject={handleOpenProject}
         onDeleteProject={remove}
       />
+      {confirmDialog.request && (
+        <ConfirmDialog
+          open={Boolean(confirmDialog.request)}
+          title={confirmDialog.request.title}
+          description={confirmDialog.request.description}
+          confirmLabel={confirmDialog.request.confirmLabel}
+          cancelLabel={confirmDialog.request.cancelLabel}
+          tone={confirmDialog.request.tone}
+          onConfirm={confirmDialog.handleConfirm}
+          onCancel={confirmDialog.handleCancel}
+        />
+      )}
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <header className="relative z-10 glass rounded-2xl px-3 py-2 flex items-center justify-between">
@@ -722,7 +747,7 @@ export default function App() {
               )}
 
               {/* Player card: waveform + transport + region/loop controls */}
-              <div className="glass rounded-2xl p-4 space-y-3">
+              <div className="player-card glass rounded-2xl p-4 space-y-3">
                 <AudioCanvas
                   duration={duration}
                   currentTime={currentTime}
