@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600">
+  <rect width="960" height="600" fill="#020617"/>
+  <rect x="52" y="42" width="856" height="516" rx="28" fill="#0f172a" stroke="#1e293b" stroke-width="3"/>
+  <text x="88" y="96" font-family="Arial" font-size="30" font-weight="700" fill="#f8fafc">Transcript Review</text>
+  <rect x="88" y="130" width="780" height="96" rx="18" fill="#111827" stroke="#334155"/>
+  <path d="M126 178h72l22-42 32 86 36-126 34 126 24-62 24 38h354" fill="none" stroke="#38bdf8" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="88" y="258" width="500" height="232" rx="18" fill="#020617" stroke="#1e293b"/>
+  <text x="118" y="310" font-family="Arial" font-size="24" fill="#f8fafc">Hola, necesito revisar esta frase.</text>
+  <text x="118" y="360" font-family="Arial" font-size="24" fill="#f8fafc">El audio se queda en este dispositivo.</text>
+  <text x="118" y="410" font-family="Arial" font-size="24" fill="#f8fafc">Nada se sube. Correcto.</text>
+  <rect x="620" y="258" width="248" height="232" rx="18" fill="#052e2b" stroke="#14532d"/>
+  <text x="650" y="312" font-family="Arial" font-size="22" fill="#dcfce7">English translation</text>
+  <text x="650" y="356" font-family="Arial" font-size="18" fill="#bbf7d0">The audio stays on this device.</text>
+  <text x="650" y="398" font-family="Arial" font-size="18" fill="#bbf7d0">Nothing is uploaded. Correct.</text>
+</svg>

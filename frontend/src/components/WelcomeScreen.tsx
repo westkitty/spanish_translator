@@ -33,11 +33,10 @@ export function WelcomeScreen({ onStart }: WelcomeScreenProps) {
         </div>
 
         <h1 className="text-xl font-extrabold tracking-tight text-white text-azure-glow">
-          Spanish Whisper Engine
+          Dexterpreter
         </h1>
         <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">
-          Turn Spanish audio into an editable transcript — and an English translation —
-          right on your device.
+          Offline audio transcription and translation. Spanish now. More languages later.
         </p>
 
         {/* Highlights */}
@@ -64,7 +63,7 @@ export function WelcomeScreen({ onStart }: WelcomeScreenProps) {
         </button>
 
         <p className="text-[11px] mt-3 font-mono" style={{ color: 'var(--text-subtle)' }}>
-          On-device &bull; Offline &bull; No account
+          No cloud &bull; No telemetry &bull; No account
         </p>
       </div>
     </div>

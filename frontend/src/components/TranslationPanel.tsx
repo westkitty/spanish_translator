@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Languages } from 'lucide-react';
 import type { Translation } from '../hooks/useTranscriber';
 
@@ -9,15 +9,17 @@ interface TranslationPanelProps {
 }
 
 // Read-only English translation shown alongside the editable Spanish transcript.
-// Segments are sentence-level and clickable to seek. The active segment scrolls
-// into view automatically as the playhead moves, enabling hands-free read-along.
+// Segments are sentence-level and clickable to seek. The active segment can scroll
+// into view as the playhead moves, with an explicit follow toggle for review work.
 export function TranslationPanel({ translation, currentTime, onSeek }: TranslationPanelProps) {
   const activeRef = useRef<HTMLParagraphElement | null>(null);
+  const [followPlayhead, setFollowPlayhead] = useState(true);
 
   // Scroll the active segment into view whenever the playhead crosses a boundary.
   useEffect(() => {
+    if (!followPlayhead) return;
     activeRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }, [currentTime]);
+  }, [currentTime, followPlayhead]);
 
   if (!translation || translation.segments.length === 0) {
     return null;
@@ -25,7 +27,7 @@ export function TranslationPanel({ translation, currentTime, onSeek }: Translati
 
   return (
     <div className="glass rounded-2xl p-4 flex flex-col min-h-0">
-      <div className="flex items-center gap-2 border-b border-white/10 pb-3 mb-3 shrink-0">
+      <div className="flex items-center gap-2 border-b border-white/10 pb-3 mb-3 shrink-0 flex-wrap">
         <Languages className="w-4 h-4 shrink-0" style={{ color: 'var(--trans)' }} />
         <h2 className="text-sm font-semibold tracking-wide" style={{ color: 'var(--text)' }}>
           ENGLISH TRANSLATION
@@ -33,6 +35,15 @@ export function TranslationPanel({ translation, currentTime, onSeek }: Translati
         <span className="ml-auto text-[11px] font-mono" style={{ color: 'var(--trans)' }}>
           {translation.segments.length} segment{translation.segments.length === 1 ? '' : 's'}
         </span>
+        <button
+          type="button"
+          onClick={() => setFollowPlayhead((value) => !value)}
+          className="translation-follow-toggle"
+          aria-pressed={followPlayhead}
+          title={followPlayhead ? 'Stop auto-following playback' : 'Follow active translation during playback'}
+        >
+          {followPlayhead ? 'Following' : 'Follow off'}
+        </button>
       </div>
 
       <div className="overflow-y-auto space-y-1.5 leading-relaxed">
@@ -48,7 +59,7 @@ export function TranslationPanel({ translation, currentTime, onSeek }: Translati
                 isActive
                   ? {
                       background: 'var(--trans-bg)',
-                      color: '#a7f3d0',
+                      color: 'var(--trans-text)',
                       border: '1px solid var(--trans-border)',
                     }
                   : {

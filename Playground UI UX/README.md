@@ -1,6 +1,6 @@
 # Playground UI UX
 
-UI/UX audit and design-direction deliverables for the **Spanish Whisper Engine** app.
+UI/UX audit and design-direction deliverables for the **Dexterpreter** app.
 
 Created **2026-06-07** by a source-level review of `frontend/src` (App + all 11 components, `index.css`) **plus** a live dev-server review (`npm run dev`) with screenshots at mobile (375×812) and tablet (1280×800), and direct DOM inspection to verify font sizes and layout widths.
 

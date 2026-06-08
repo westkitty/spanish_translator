@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Type, AlignLeft, Search, Undo2, Redo2, History, Download } from 'lucide-react';
 import { CaptionEditor, type CaptionWord } from './CaptionEditor';
 import { buildSentences, type Sentence } from '../lib/punctuation';
@@ -42,8 +42,15 @@ export function TranscriptView({
   const [find, setFind] = useState('');
   const [replace, setReplace] = useState('');
   const [lastCount, setLastCount] = useState<number | null>(null);
+  const [followPlayhead, setFollowPlayhead] = useState(true);
+  const activeSentenceRef = useRef<HTMLDivElement | null>(null);
 
   const sentences = useMemo(() => buildSentences(captions, silences), [captions, silences]);
+
+  useEffect(() => {
+    if (mode !== 'read' || !followPlayhead) return;
+    activeSentenceRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [currentTime, followPlayhead, mode]);
 
   const tabBtn = (active: boolean) =>
     `flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
@@ -64,12 +71,28 @@ export function TranscriptView({
       <div className="flex items-center gap-2 border-b border-white/10 pb-3 mb-3 flex-wrap">
         <div className="flex items-center gap-1 bg-white/[0.03] rounded-lg p-0.5">
           <button onClick={() => setMode('words')} className={tabBtn(mode === 'words')}>
-            <Type className="w-3.5 h-3.5" /> Edit words
+            <Type className="w-3.5 h-3.5" /> Word edit
           </button>
           <button onClick={() => setMode('read')} className={tabBtn(mode === 'read')}>
-            <AlignLeft className="w-3.5 h-3.5" /> Read
+            <AlignLeft className="w-3.5 h-3.5" /> Sentence review
           </button>
         </div>
+        {mode === 'read' && (
+          <button
+            type="button"
+            onClick={() => setFollowPlayhead((value) => !value)}
+            className="translation-follow-toggle"
+            aria-pressed={followPlayhead}
+            title={followPlayhead ? 'Stop auto-following the active Spanish sentence' : 'Follow the active Spanish sentence'}
+          >
+            {followPlayhead ? 'Following' : 'Follow off'}
+          </button>
+        )}
+        <p className="w-full order-last text-[11px]" style={{ color: 'var(--text-subtle)' }}>
+          {mode === 'words'
+            ? 'Word edit is best for timestamp fixes and precise correction.'
+            : 'Sentence review is best for reading, clipping, and export checks.'}
+        </p>
 
         <div className="ml-auto flex items-center gap-0.5">
           <button onClick={() => setShowFind((v) => !v)} className={iconBtn(true)} style={iconBtnStyle(true)} aria-label="Find and replace">
@@ -136,11 +159,12 @@ export function TranscriptView({
               return (
                 <div
                   key={s.id}
+                  ref={active ? activeSentenceRef : undefined}
                   onClick={() => onSeek(s.start)}
                   className="group cursor-pointer px-2.5 py-1.5 rounded-lg text-sm leading-relaxed transition-colors border"
                   style={
                     active
-                      ? { background: 'var(--accent-bg)', color: '#bae6fd', borderColor: 'var(--accent-border)' }
+                      ? { background: 'var(--accent-bg)', color: 'var(--accent-bright)', borderColor: 'var(--accent-border)' }
                       : { color: 'var(--text-muted)', borderColor: 'transparent' }
                   }
                 >

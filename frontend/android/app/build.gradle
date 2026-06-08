@@ -1,14 +1,14 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace = "com.spanishcaptionengine.app"
+    namespace = "io.github.westkitty.dexterpreter"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.spanishcaptionengine.app"
+        applicationId "io.github.westkitty.dexterpreter"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
-        versionName "1.0"
+        versionName "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,19 +16,32 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
-    signingConfigs {
-        release {
-            storeFile file('release.keystore')
-            storePassword 'offlinetranslator'
-            keyAlias 'offlinetranslator'
-            keyPassword 'offlinetranslator'
+    def releaseStoreFile = System.getenv("DEXTERPRETER_RELEASE_STORE_FILE")
+    def releaseStorePassword = System.getenv("DEXTERPRETER_RELEASE_STORE_PASSWORD")
+    def releaseKeyAlias = System.getenv("DEXTERPRETER_RELEASE_KEY_ALIAS")
+    def releaseKeyPassword = System.getenv("DEXTERPRETER_RELEASE_KEY_PASSWORD")
+    def hasReleaseSigning =
+            releaseStoreFile &&
+            releaseStorePassword &&
+            releaseKeyAlias &&
+            releaseKeyPassword
+    if (hasReleaseSigning) {
+        signingConfigs {
+            release {
+                storeFile file(releaseStoreFile)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
         }
     }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.release
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }
@@ -52,12 +65,3 @@ dependencies {
 }
 
 apply from: 'capacitor.build.gradle'
-
-try {
-    def servicesJSON = file('google-services.json')
-    if (servicesJSON.text) {
-        apply plugin: 'com.google.gms.google-services'
-    }
-} catch(Exception e) {
-    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
-}

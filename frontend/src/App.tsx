@@ -30,6 +30,8 @@ import { FaqModal } from './components/FaqModal';
 import { ProgressPanel } from './components/ProgressPanel';
 import { LibraryModal } from './components/LibraryModal';
 import { AdvancedOptions } from './components/AdvancedOptions';
+import { ConfirmDialog } from './components/ConfirmDialog';
+import { useConfirmDialog } from './hooks/useConfirmDialog';
 import type { Sentence } from './lib/punctuation';
 import { newProjectId, type StoredProject } from './lib/db';
 import { decodeAudioFile, computePeaks, extractWavClip } from './lib/audio';
@@ -39,10 +41,11 @@ import { saveBlobFile, saveTextFile } from './lib/fileSave';
 import { getStoredFlag, setStoredFlag } from './lib/storage';
 import { availableTiers, defaultModel, type WhisperModel } from './lib/models';
 
-const WELCOME_SEEN_KEY = 'spanish-whisper-seen-welcome';
-const RESULT_TIP_SEEN_KEY = 'spanish-whisper-seen-result-tip';
+const WELCOME_SEEN_KEY = 'dexterpreter-seen-welcome';
+const RESULT_TIP_SEEN_KEY = 'dexterpreter-seen-result-tip';
 
 export default function App() {
+  const confirmDialog = useConfirmDialog();
   const [file, setFile] = useState<File | null>(null);
   const tiers = useMemo(() => availableTiers(), []);
   const [model, setModel] = useState<WhisperModel>(() => defaultModel());
@@ -290,11 +293,16 @@ export default function App() {
     return () => window.clearTimeout(t);
   }, [captions, translation, peaks, done, save]);
 
-  const handleRerun = () => {
-    const confirmed = window.confirm(
-      'Re-run this file? The current transcript, translation, and edits will be replaced.'
-    );
+  const handleRerun = async () => {
+    const confirmed = await confirmDialog.confirm({
+      title: 'Re-run this file?',
+      description:
+        'The current transcript, translation, and edits will be replaced. Your selected audio file stays loaded so you can change model or options first.',
+      confirmLabel: 'Re-run file',
+      tone: 'warning',
+    });
     if (!confirmed) return;
+
     pause();
     seek(0);
     setSelectedRange(null);
@@ -307,12 +315,17 @@ export default function App() {
     reset();
   };
 
-  const handleRegionRerun = () => {
+  const handleRegionRerun = async () => {
     if (!file || !selectedRange) return;
-    const confirmed = window.confirm(
-      'Re-run just this selected region? Words and translation in that range will be replaced.'
-    );
+
+    const confirmed = await confirmDialog.confirm({
+      title: 'Re-run selected region?',
+      description: `Words and translation between ${formatRange(selectedRange)} will be replaced. Everything outside that range will be kept.`,
+      confirmLabel: 'Re-run region',
+      tone: 'warning',
+    });
     if (!confirmed) return;
+
     setUndoStack((s) => [...s, captions]);
     setRedoStack([]);
     runRegion(file, selectedRange, runOptions);
@@ -463,6 +476,18 @@ export default function App() {
         onOpenProject={handleOpenProject}
         onDeleteProject={remove}
       />
+      {confirmDialog.request && (
+        <ConfirmDialog
+          open={Boolean(confirmDialog.request)}
+          title={confirmDialog.request.title}
+          description={confirmDialog.request.description}
+          confirmLabel={confirmDialog.request.confirmLabel}
+          cancelLabel={confirmDialog.request.cancelLabel}
+          tone={confirmDialog.request.tone}
+          onConfirm={confirmDialog.handleConfirm}
+          onCancel={confirmDialog.handleCancel}
+        />
+      )}
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <header className="relative z-10 glass rounded-2xl px-3 py-2 flex items-center justify-between">
@@ -472,10 +497,10 @@ export default function App() {
           </div>
           <div>
             <h1 className="text-sm md:text-base font-extrabold tracking-tight bg-gradient-to-r from-sky-300 to-blue-400 bg-clip-text text-transparent">
-              Spanish Whisper Engine
+              Dexterpreter
             </h1>
             <p className="text-[11px] font-medium" style={{ color: 'var(--text-subtle)' }}>
-              On-Device · No Server · Offline
+              Spanish now · More languages later · No cloud
             </p>
           </div>
         </div>
@@ -625,7 +650,7 @@ export default function App() {
                   </label>
                   <p className="text-[11px] flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
                     <Languages className="w-3 h-3 text-sky-300" />
-                    Outputs a Spanish transcript <span style={{ color: 'var(--text-subtle)' }}>+</span> English translation automatically.
+                    Current pipeline: Spanish audio to Spanish transcript <span style={{ color: 'var(--text-subtle)' }}>+</span> English translation.
                   </p>
                   <AdvancedOptions
                     vocab={vocab}
@@ -667,7 +692,7 @@ export default function App() {
               {done && (
                 <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: 'var(--warn-border)', background: 'var(--warn-bg)' }}>
                   <p className="text-[11px]" style={{ color: 'var(--warn)' }}>
-                    Re-run keeps this file selected so you can change the model or options. It will replace the current transcript, translation, and edits.
+                    Re-run keeps this file selected so you can change the model or options. It will replace the current Spanish transcript, English translation, and edits.
                   </p>
                   <button
                     onClick={handleRerun}
@@ -722,7 +747,7 @@ export default function App() {
               )}
 
               {/* Player card: waveform + transport + region/loop controls */}
-              <div className="glass rounded-2xl p-4 space-y-3">
+              <div className="player-card glass rounded-2xl p-4 space-y-3">
                 <AudioCanvas
                   duration={duration}
                   currentTime={currentTime}
@@ -910,7 +935,7 @@ export default function App() {
 
       {/* ── Footer ─────────────────────────────────────────────────────────── */}
       <footer className="relative z-10 text-[11px] text-center py-1.5 mt-auto flex items-center justify-center gap-1 font-mono" style={{ color: 'var(--text-subtle)' }}>
-        <Info className="w-3 h-3" /> On-Device Spanish Whisper &bull; Offline &bull; No Server
+        <Info className="w-3 h-3" /> Dexterpreter &bull; On-device &bull; No cloud
       </footer>
     </div>
   );
