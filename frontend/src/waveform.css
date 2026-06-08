@@ -1,0 +1,46 @@
+:root {
+  --canvas-bg: #08111f;
+  --waveform-centerline: rgba(255, 255, 255, 0.06);
+  --accent-played: rgba(56, 189, 248, 0.95);
+  --accent-unplayed: rgba(56, 189, 248, 0.38);
+  --waveform-placeholder: rgba(56, 189, 248, 0.22);
+  --waveform-silence: rgba(148, 163, 184, 0.14);
+  --waveform-selection-fill: rgba(251, 191, 36, 0.14);
+  --waveform-selection-stroke: rgba(252, 211, 77, 0.7);
+  --waveform-playhead: rgba(56, 189, 248, 0.9);
+  --waveform-playhead-shadow: rgba(56, 189, 248, 0.6);
+  --waveform-knob: #ffffff;
+}
+
+html[data-theme='darker'] {
+  --canvas-bg: #030712;
+  --waveform-centerline: rgba(148, 163, 184, 0.11);
+  --accent-played: rgba(96, 165, 250, 0.96);
+  --accent-unplayed: rgba(96, 165, 250, 0.34);
+  --waveform-placeholder: rgba(96, 165, 250, 0.2);
+  --waveform-silence: rgba(71, 85, 105, 0.2);
+  --waveform-selection-fill: rgba(252, 211, 77, 0.13);
+  --waveform-selection-stroke: rgba(252, 211, 77, 0.72);
+  --waveform-playhead: rgba(96, 165, 250, 0.96);
+  --waveform-playhead-shadow: rgba(96, 165, 250, 0.62);
+  --waveform-knob: #f8fafc;
+}
+
+html[data-theme='cream'] {
+  --canvas-bg: #eff6ff;
+  --waveform-centerline: rgba(31, 41, 55, 0.14);
+  --accent-played: rgba(29, 78, 216, 0.92);
+  --accent-unplayed: rgba(29, 78, 216, 0.32);
+  --waveform-placeholder: rgba(29, 78, 216, 0.22);
+  --waveform-silence: rgba(107, 114, 128, 0.2);
+  --waveform-selection-fill: rgba(146, 64, 14, 0.12);
+  --waveform-selection-stroke: rgba(146, 64, 14, 0.58);
+  --waveform-playhead: rgba(30, 64, 175, 0.96);
+  --waveform-playhead-shadow: rgba(30, 64, 175, 0.36);
+  --waveform-knob: #ffffff;
+}
+
+canvas[role='slider']:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 2px;
+}
