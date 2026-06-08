@@ -8,6 +8,7 @@ import { ToastViewport } from './components/ToastViewport';
 import { applyStoredTheme } from './lib/themes';
 import './index.css';
 import './theme.css';
+import './review-navigation.css';
 
 applyStoredTheme();
 
