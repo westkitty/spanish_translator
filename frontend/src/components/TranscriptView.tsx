@@ -64,12 +64,17 @@ export function TranscriptView({
       <div className="flex items-center gap-2 border-b border-white/10 pb-3 mb-3 flex-wrap">
         <div className="flex items-center gap-1 bg-white/[0.03] rounded-lg p-0.5">
           <button onClick={() => setMode('words')} className={tabBtn(mode === 'words')}>
-            <Type className="w-3.5 h-3.5" /> Edit words
+            <Type className="w-3.5 h-3.5" /> Word edit
           </button>
           <button onClick={() => setMode('read')} className={tabBtn(mode === 'read')}>
-            <AlignLeft className="w-3.5 h-3.5" /> Read
+            <AlignLeft className="w-3.5 h-3.5" /> Sentence review
           </button>
         </div>
+        <p className="w-full order-last text-[11px]" style={{ color: 'var(--text-subtle)' }}>
+          {mode === 'words'
+            ? 'Word edit is best for timestamp fixes and precise correction.'
+            : 'Sentence review is best for reading, clipping, and export checks.'}
+        </p>
 
         <div className="ml-auto flex items-center gap-0.5">
           <button onClick={() => setShowFind((v) => !v)} className={iconBtn(true)} style={iconBtnStyle(true)} aria-label="Find and replace">
@@ -140,7 +145,7 @@ export function TranscriptView({
                   className="group cursor-pointer px-2.5 py-1.5 rounded-lg text-sm leading-relaxed transition-colors border"
                   style={
                     active
-                      ? { background: 'var(--accent-bg)', color: '#bae6fd', borderColor: 'var(--accent-border)' }
+                      ? { background: 'var(--accent-bg)', color: 'var(--accent-bright)', borderColor: 'var(--accent-border)' }
                       : { color: 'var(--text-muted)', borderColor: 'transparent' }
                   }
                 >
