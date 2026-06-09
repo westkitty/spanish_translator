@@ -5,7 +5,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-1.0.0-38bdf8)
+![Version](https://img.shields.io/badge/version-1.0.1-38bdf8)
 ![Offline](https://img.shields.io/badge/offline-first-22c55e)
 ![Telemetry](https://img.shields.io/badge/telemetry-none-64748b)
 ![Platform](https://img.shields.io/badge/platform-Android-0f172a)
@@ -35,7 +35,7 @@ No cloud. No telemetry. No nonsense.
 ## What This Is
 
 Dexterpreter is a local/offline audio transcription and translation app. Version
-1.0.0 supports the Spanish path:
+1.0.1 supports the Spanish path:
 
 1. Spanish audio in.
 2. Spanish transcript out.
@@ -54,17 +54,17 @@ personal screenshots, no local metadata.
 
 ## Install
 
-When `v1.0.0` is published, download the Android package from the
+When `v1.0.1` is published, download the Android package from the
 [GitHub Releases page](https://github.com/westkitty/spanish_translator/releases).
 
 Release artifacts prepared by this repository use these names:
 
-- `Dexterpreter-1.0.0-android.apk` for a signed release APK, when local signing
+- `Dexterpreter-1.0.1-android.apk` for a signed release APK, when local signing
   credentials are supplied.
-- `Dexterpreter-1.0.0-android-unsigned.apk` when a release APK is built without
+- `Dexterpreter-1.0.1-android-unsigned.apk` when a release APK is built without
   local signing credentials.
-- `Dexterpreter-1.0.0-android-debug.apk` when only a debug build is available.
-- `Dexterpreter-1.0.0-SHA256SUMS.txt` for checksums.
+- `Dexterpreter-1.0.1-android-debug.apk` when only a debug build is available.
+- `Dexterpreter-1.0.1-SHA256SUMS.txt` for checksums.
 
 Android may ask you to allow installing an app from the browser or file manager.
 That is normal for sideloaded APKs. Read the prompt. Then read it again, because
@@ -95,7 +95,7 @@ Current release support is deliberately narrow:
 - Editable Spanish transcript.
 - English translation from the Spanish transcript.
 
-Other source languages are not complete in version 1.0.0. The code is structured
+Other source languages are not complete in version 1.0.1. The code is structured
 for expansion, but this release ships Spanish-to-English. Marketing has been
 kept on a short leash.
 
@@ -189,7 +189,7 @@ cd android
 ```
 
 The unsigned artifact prepared in `dist/release/` is
-`Dexterpreter-1.0.0-android-unsigned.apk`. Sign it locally before treating it as
+`Dexterpreter-1.0.1-android-unsigned.apk`. Sign it locally before treating it as
 a final public release package.
 
 Locally signed release APK:
@@ -273,7 +273,7 @@ not a philosophical event.
 - Non-demo accuracy fixtures for `eval:gate`.
 - Additional language paths after the Spanish-to-English path is stable.
 - Better model cache controls.
-- Signed release publishing for `v1.0.0`.
+- Signed release publishing for `v1.0.1`.
 
 ## License
 

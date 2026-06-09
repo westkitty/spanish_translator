@@ -1,7 +1,7 @@
-# Dexterpreter 1.0.0 Release Roadmap
+# Dexterpreter 1.0.1 Release Roadmap
 
 Dexterpreter is the release identity for the local/offline transcription and
-translation app. Version 1.0.0 supports Spanish audio to Spanish transcript to
+translation app. Version 1.0.1 supports Spanish audio to Spanish transcript to
 English translation.
 
 ## Release Identity
@@ -9,8 +9,8 @@ English translation.
 - Product name: Dexterpreter
 - Package ID: `io.github.westkitty.dexterpreter`
 - NPM package: `dexterpreter-client`
-- Version: `1.0.0`
-- Tag: `v1.0.0`
+- Version: `1.0.1`
+- Tag: `v1.0.1`
 - Short description: Offline audio transcription and translation. No cloud. No
   nonsense.
 
@@ -55,6 +55,6 @@ No keystores or signing secrets belong in the repository.
 ## Remaining Manual Release Steps
 
 1. Rename the GitHub repository if desired.
-2. Publish tag `v1.0.0`.
+2. Publish tag `v1.0.1`.
 3. Upload the prepared APK and SHA-256 checksum file to the GitHub release.
 4. Capture a real device demo if the synthetic storyboard is not enough.
