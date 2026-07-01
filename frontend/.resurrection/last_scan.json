@@ -1,0 +1,76 @@
+{
+  "git_state": {
+    "available": true,
+    "branch": "main",
+    "dirty": true,
+    "head": "d696e87fc400c4d1bbc372178647dded32d9e36d",
+    "head_subject": "chore(release): publish Dexterpreter 1.0.1 (#11)",
+    "is_repo": true,
+    "remote_url": "git@github.com:westkitty/spanish_translator",
+    "repo_root": "/Users/andrew/Spanish offline transliter.",
+    "staged_count": 0,
+    "tracked_modified_count": 0,
+    "untracked_count": 1
+  },
+  "identity": {
+    "name": "frontend",
+    "path": "/Users/andrew/Spanish offline transliter./frontend"
+  },
+  "project_type": {
+    "confidence": 0.75,
+    "evidence": [
+      "Found package.json",
+      "Found vite.config.ts",
+      "Found index.html"
+    ],
+    "purpose": "Purpose could not be inferred confidently from filesystem signals.",
+    "type": "vite_app"
+  },
+  "recommended_next_actions": [
+    "Inspect the current uncommitted Git changes before making new edits.",
+    "Back up or review fragile configuration files before any risky changes.",
+    "Validate the project with the hinted test command: npm run test",
+    "Validate the project with the hinted run/dev command: npm run dev",
+    "Validate the project with the hinted build command: npm run build"
+  ],
+  "scan_timestamp": "2026-06-27T18:16:15+00:00",
+  "scanner_version": "1.0.0",
+  "signature": {
+    "git_dirty": {
+      "dirty": true,
+      "staged_count": 0,
+      "tracked_modified_count": 0,
+      "untracked_count": 1
+    },
+    "git_head": "d696e87fc400c4d1bbc372178647dded32d9e36d",
+    "project_type": "vite_app",
+    "scanner_version": "1.0.0",
+    "watched_files": {
+      "android/app/src/main/assets/public/index.html": {
+        "mtime_ns": 1780966771306993224,
+        "sha256": "a5b50978434ca85c4e8e1348d108d5d4043d71882cad492fc623f44c07320d1d",
+        "size": 739
+      },
+      "eval/README.md": {
+        "mtime_ns": 1780702501001798638,
+        "sha256": "d519e2a1efd6c3a17d8270c27044e4d888b476e972a8eb3432870a66c2d56e36",
+        "size": 2305
+      },
+      "index.html": {
+        "mtime_ns": 1780958606929400021,
+        "sha256": "33dbca77d2c580242290dc29485016b43ae8380717596cb8a9d78b13dcf30f28",
+        "size": 641
+      },
+      "package.json": {
+        "mtime_ns": 1780967060064102286,
+        "sha256": "0cda3fccdcf9e06019c1fb2dabfad5e921722b49c625262b5d2ba5242908dc05",
+        "size": 1033
+      },
+      "vite.config.ts": {
+        "mtime_ns": 1780617944255305062,
+        "sha256": "122cd5891bc7df79d5520bafc1d821c0ca2dc9d1b5fb7de3c9b42b4adf9e0ee3",
+        "size": 566
+      }
+    }
+  }
+}

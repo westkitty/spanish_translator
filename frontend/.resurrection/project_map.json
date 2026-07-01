@@ -1,0 +1,93 @@
+{
+  "commands": [
+    {
+      "category": "build",
+      "command": "npm run build",
+      "source": "package.json:scripts.build"
+    },
+    {
+      "category": "run/dev",
+      "command": "npm run dev",
+      "source": "package.json:scripts.dev"
+    },
+    {
+      "category": "run/dev",
+      "command": "npm run eval",
+      "source": "package.json:scripts.eval"
+    },
+    {
+      "category": "run/dev",
+      "command": "npm run eval:gate",
+      "source": "package.json:scripts.eval:gate"
+    },
+    {
+      "category": "run/dev",
+      "command": "npm run preview",
+      "source": "package.json:scripts.preview"
+    },
+    {
+      "category": "test",
+      "command": "npm run test",
+      "source": "package.json:scripts.test"
+    },
+    {
+      "category": "test",
+      "command": "npm run test:watch",
+      "source": "package.json:scripts.test:watch"
+    },
+    {
+      "category": "run/dev",
+      "command": "npm run dev",
+      "source": "vite.config.*"
+    },
+    {
+      "category": "build",
+      "command": "npm run build",
+      "source": "vite.config.*"
+    }
+  ],
+  "duplicate_candidates": [],
+  "fragile_files": [
+    "eval/README.md",
+    "package-lock.json",
+    "package.json",
+    "vite.config.ts"
+  ],
+  "git_state": {
+    "available": true,
+    "branch": "main",
+    "dirty": true,
+    "head": "d696e87fc400c4d1bbc372178647dded32d9e36d",
+    "head_subject": "chore(release): publish Dexterpreter 1.0.1 (#11)",
+    "is_repo": true,
+    "remote_url": "git@github.com:westkitty/spanish_translator",
+    "repo_root": "/Users/andrew/Spanish offline transliter.",
+    "staged_count": 0,
+    "tracked_modified_count": 0,
+    "untracked_count": 1
+  },
+  "identity": {
+    "name": "frontend",
+    "path": "/Users/andrew/Spanish offline transliter./frontend"
+  },
+  "project_type": {
+    "confidence": 0.75,
+    "evidence": [
+      "Found package.json",
+      "Found vite.config.ts",
+      "Found index.html"
+    ],
+    "purpose": "Purpose could not be inferred confidently from filesystem signals.",
+    "type": "vite_app"
+  },
+  "recommended_next_actions": [
+    "Inspect the current uncommitted Git changes before making new edits.",
+    "Back up or review fragile configuration files before any risky changes.",
+    "Validate the project with the hinted test command: npm run test",
+    "Validate the project with the hinted run/dev command: npm run dev",
+    "Validate the project with the hinted build command: npm run build"
+  ],
+  "scan_timestamp": "2026-06-27T18:16:15+00:00",
+  "scanner_version": "1.0.0",
+  "secret_risks": []
+}

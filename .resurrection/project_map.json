@@ -1,0 +1,68 @@
+{
+  "commands": [],
+  "duplicate_candidates": [
+    "sibling-near-duplicate: -p"
+  ],
+  "fragile_files": [
+    "frontend/eval/README.md",
+    "frontend/package-lock.json",
+    "frontend/package.json",
+    "frontend/vite.config.ts",
+    "Playground UI UX/README.md",
+    "README.md"
+  ],
+  "git_state": {
+    "available": true,
+    "branch": "main",
+    "dirty": true,
+    "head": "d696e87fc400c4d1bbc372178647dded32d9e36d",
+    "head_subject": "chore(release): publish Dexterpreter 1.0.1 (#11)",
+    "is_repo": true,
+    "remote_url": "git@github.com:westkitty/spanish_translator",
+    "repo_root": "/Users/andrew/Spanish offline transliter.",
+    "staged_count": 0,
+    "tracked_modified_count": 0,
+    "untracked_count": 2
+  },
+  "identity": {
+    "name": "Spanish offline transliter.",
+    "path": "/Users/andrew/Spanish offline transliter."
+  },
+  "project_type": {
+    "confidence": 0.2,
+    "evidence": [],
+    "purpose": "Purpose could not be inferred confidently from filesystem signals.",
+    "type": "unknown"
+  },
+  "recommended_next_actions": [
+    "Inspect the current uncommitted Git changes before making new edits.",
+    "Review secret-risk findings and move sensitive values out of tracked files.",
+    "Back up or review fragile configuration files before any risky changes.",
+    "Read the top-level README.md or AGENTS.md to establish project intent.",
+    "Read `.resurrection/project_report.md` and make one bounded change at a time."
+  ],
+  "scan_timestamp": "2026-06-29T04:21:49+00:00",
+  "scanner_version": "1.1.0",
+  "secret_risks": [
+    {
+      "category": "password_assignment",
+      "line": 200,
+      "path": "README.md"
+    },
+    {
+      "category": "password_assignment",
+      "line": 202,
+      "path": "README.md"
+    },
+    {
+      "category": "password_assignment",
+      "line": 35,
+      "path": "docs/release/android-build.md"
+    },
+    {
+      "category": "password_assignment",
+      "line": 37,
+      "path": "docs/release/android-build.md"
+    }
+  ]
+}
