@@ -1,0 +1,132 @@
+sAudio).length,
+      incompleteTranslation: projects.filter((project) => project.translationState === 'incomplete').length,
+    },
+    privacy: 'This report contains device and app metadata, not transcript text or source audio.',
+  };
+}
+''')
+
+write('frontend/src/lib/workflowState.ts', r'''export interface WorkflowInput {
+  hasFile: boolean;
+  hasAudio: boolean;
+  status: string;
+  hasTranscript: boolean;
+  hasTranslation: boolean;
+  translationWarning?: string;
+}
+
+export function deriveWorkflowCapabilities(input: WorkflowInput) {
+  const working = ['decoding', 'loading-model', 'transcribing', 'translating'].includes(input.status);
+  const done = input.status === 'done';
+  return {
+    working,
+    done,
+    canStart: input.hasFile && input.hasAudio && !working,
+    canCancel: working,
+    canPlay: done && input.hasAudio,
+    canEdit: done && input.hasTranscript,
+    canExportText: done && input.hasTranscript,
+    canRetryTranslation: done && input.hasTranscript && (!input.hasTranslation || Boolean(input.translationWarning)),
+  };
+}
+''')
+
+write('frontend/src/lib/projectBundle.ts', r'''import type { StoredProject } from './db';
+
+interface ProjectBundleV1 {
+  schema: 'dexterpreter-project';
+  version: 1;
+  exportedAt: string;
+  project: Omit<StoredProject, 'audioBlob'> & { audio?: { type: string; base64: string } };
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  return btoa(binary);
+}
+
+function base64ToBytes(value: string): Uint8Array {
+  const binary = atob(value);
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+}
+
+export async function exportProjectBundle(project: StoredProject, includeAudio: boolean): Promise<string> {
+  const { audioBlob, ...rest } = project;
+  const audio = includeAudio && audioBlob.size > 0
+    ? { type: audioBlob.type, base64: bytesToBase64(new Uint8Array(await audioBlob.arrayBuffer())) }
+    : undefined;
+  const bundle: ProjectBundleV1 = { schema: 'dexterpreter-project', version: 1, exportedAt: new Date().toISOString(), project: { ...rest, audio } };
+  return JSON.stringify(bundle, null, 2);
+}
+
+export function importProjectBundle(text: string): StoredProject {
+  const value = JSON.parse(text) as ProjectBundleV1;
+  if (value.schema !== 'dexterpreter-project' || value.version !== 1 || !value.project?.id || !Array.isArray(value.project.words)) {
+    throw new Error('This is not a supported Dexterpreter project bundle.');
+  }
+  const { audio, ...project } = value.project;
+  const audioBlob = audio ? new Blob([base64ToBytes(audio.base64)], { type: audio.type }) : new Blob([], { type: 'application/x-dexterpreter-transcript-only' });
+  return { ...project, id: `${project.id}-import-${Date.now()}`, name: `${project.name} (imported)`, audioBlob, updatedAt: Date.now() };
+}
+''')
+
+write('frontend/src/components/ProductToolsModal.tsx', r'''import { useEffect, useState } from 'react';
+import { Database, Download, HardDrive, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react';
+import { Modal } from './Modal';
+import { activeCorrectionText, loadCorrections, saveCorrections, type ManagedCorrection } from '../lib/correctionStore';
+import { inspectOfflineReadiness, recordOfflineTest, requestPersistentStorage, type OfflineReadinessReport } from '../lib/offlineReadiness';
+import { buildDiagnostics } from '../lib/diagnostics';
+import { saveTextFile } from '../lib/fileSave';
+import type { ProjectMeta } from '../lib/db';
+
+interface ProductToolsModalProps {
+  open: boolean;
+  onClose: () => void;
+  projects: ProjectMeta[];
+  onCorrectionsChanged: (text: string) => void;
+}
+
+function bytes(value: number | null): string {
+  if (value === null) return 'Unknown';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let n = value; let i = 0;
+  while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+  return `${n.toFixed(i ? 1 : 0)} ${units[i]}`;
+}
+
+export function ProductToolsModal({ open, onClose, projects, onCorrectionsChanged }: ProductToolsModalProps) {
+  const [tab, setTab] = useState<'offline' | 'dictionary' | 'diagnostics'>('offline');
+  const [report, setReport] = useState<OfflineReadinessReport | null>(null);
+  const [rules, setRules] = useState<ManagedCorrection[]>([]);
+  const refresh = () => void inspectOfflineReadiness().then(setReport);
+
+  useEffect(() => { if (open) { refresh(); setRules(loadCorrections()); } }, [open]);
+  const commitRules = (next: ManagedCorrection[]) => { setRules(next); saveCorrections(next); onCorrectionsChanged(activeCorrectionText()); };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Tools and readiness" labelledBy="product-tools-title">
+      <div className="segmented-control" role="tablist" aria-label="Project tools">
+        {(['offline', 'dictionary', 'diagnostics'] as const).map((id) => <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{id === 'offline' ? 'Offline' : id === 'dictionary' ? 'Dictionary' : 'Diagnostics'}</button>)}
+      </div>
+
+      {tab === 'offline' && <section className="tool-section">
+        <div className="section-heading"><HardDrive aria-hidden="true" /><div><h2>Offline readiness</h2><p>Measured browser storage and cache state. This does not assume a model is available merely because the app loaded once.</p></div></div>
+        {!report ? <p>Inspecting storage…</p> : <dl className="readiness-grid">
+          <div><dt>Network</dt><dd>{report.online ? 'Connected' : 'Offline'}</dd></div>
+          <div><dt>Persistent storage</dt><dd>{report.persisted === null ? 'Unsupported' : report.persisted ? 'Granted' : 'Not granted'}</dd></div>
+          <div><dt>Storage use</dt><dd>{bytes(report.usage)} of {bytes(report.quota)}</dd></div>
+          <div><dt>Transcription cache evidence</dt><dd>{report.transcriptionModelCached ? 'Found' : 'Not found'}</dd></div>
+          <div><dt>Translation cache evidence</dt><dd>{report.translationModelCached ? 'Found' : 'Not found'}</dd></div>
+          <div><dt>Last offline test</dt><dd>{report.lastOfflineTest ? new Date(report.lastOfflineTest).toLocaleString() : 'Never recorded'}</dd></div>
+        </dl>}
+        <div className="toolbar-actions">
+          <button type="button" onClick={refresh}><RefreshCw aria-hidden="true" />Refresh</button>
+          <button type="button" onClick={() => void requestPersistentStorage().then(refresh)}><ShieldCheck aria-hidden="true" />Request persistent storage</button>
+          <button type="button" onClick={() => { try { recordOfflineTest(); refresh(); } catch (error) { alert(error instanceof Error ? error.message : String(error)); } }}>Record offline test</button>
+        </div>
+      </section>}
+
+      {tab === 'dictionary' && <section className="tool-section">
+        <div className="section-heading"><Database aria-hidden="true" /><div><h2>Personal correction dictionary</h2><p>Review, disable, or remove learned

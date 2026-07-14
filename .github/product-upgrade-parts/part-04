@@ -1,0 +1,49 @@
+\" onClick={() => setPendingDelete(project)}")
+
+# App wiring
+replace('frontend/src/App.tsx', "  Square,\n} from 'lucide-react';", "  Square,\n  Settings2,\n} from 'lucide-react';")
+replace('frontend/src/App.tsx', "import { notify } from './lib/toast';", "import { notify } from './lib/toast';\nimport { ProductToolsModal } from './components/ProductToolsModal';\nimport { activeCorrectionText, addCorrections } from './lib/correctionStore';\nimport { exportProjectBundle, importProjectBundle } from './lib/projectBundle';\nimport { deriveWorkflowCapabilities } from './lib/workflowState';")
+replace('frontend/src/App.tsx', "  const [showLibrary, setShowLibrary] = useState(false);", "  const [showLibrary, setShowLibrary] = useState(false);\n  const [showProductTools, setShowProductTools] = useState(false);")
+replace('frontend/src/App.tsx', "  const [vocab, setVocab] = useState('');", "  const [vocab, setVocab] = useState(() => activeCorrectionText());")
+# Inject retryTranslation into destructure after runRegion
+replace('frontend/src/App.tsx', "    runRegion,\n    cancel,", "    runRegion,\n    retryTranslation,\n    cancel,")
+replace('frontend/src/App.tsx', "    setVocab((v) => mergeGlossaryText(v, learned));", "    const merged = mergeGlossaryText(vocab, learned);\n    setVocab(merged);\n    addCorrections(learned.map((rule) => `${rule.from} -> ${rule.to}`).join('\\n'), projectBaseRef.current?.id);")
+replace('frontend/src/App.tsx', "  const done = status === 'done';", "  const done = status === 'done';\n  const capabilities = deriveWorkflowCapabilities({ hasFile: Boolean(file), hasAudio: sourceAudioAvailable, status, hasTranscript: captions.length > 0, hasTranslation: Boolean(translation?.text), translationWarning: translation?.warning });")
+replace('frontend/src/App.tsx', "  const handleDeleteProject = async (id: string) => {", "  const handleExportProject = async (id: string) => {\n    const project = await open(id);\n    if (!project) return;\n    const includeAudio = project.audioBlob.size > 0 && confirm('Include retained source audio in the project bundle?');\n    await saveTextFile(`${project.name.replace(/[^a-z0-9-_]+/gi, '-')}.dexterpreter.json`, 'application/json', await exportProjectBundle(project, includeAudio));\n  };\n\n  const handleImportProject = async (bundleFile: File) => {\n    try { await save(importProjectBundle(await bundleFile.text())); notify('Project imported', 'success'); }\n    catch (cause) { notify(`Project import failed. (${cause instanceof Error ? cause.message : String(cause)})`, 'error'); }\n  };\n\n  const handleRetryTranslation = () => {\n    const segments = translation?.segments?.length ? translation.segments : captions.length ? [{ id: 'retry-all', text: captions.map((word) => word.text).join(' '), start: captions[0].start, end: captions[captions.length - 1].end }] : [];\n    retryTranslation(segments.filter((segment) => !segment.text || translation?.warning).map((segment) => ({ ...segment, text: segment.text || captions.filter((word) => word.end > segment.start && word.start < segment.end).map((word) => word.text).join(' ') })));\n  };\n\n  const handleDeleteProject = async (id: string) => {")
+replace('frontend/src/App.tsx', "      <FaqModal open={showFaq}", "      <ProductToolsModal open={showProductTools} onClose={() => setShowProductTools(false)} projects={projects} onCorrectionsChanged={setVocab} />\n      <FaqModal open={showFaq}")
+replace('frontend/src/App.tsx', "        onDeleteProject={handleDeleteProject}\n      />", "        onDeleteProject={handleDeleteProject}\n        onRenameProject={rename}\n        onExportProject={handleExportProject}\n        onImportProject={handleImportProject}\n      />")
+replace('frontend/src/App.tsx', "          <ShellTools />", "          <ShellTools />\n          <button onClick={() => setShowProductTools(true)} aria-label=\"Open tools and offline readiness\" className=\"icon-button\"><Settings2 aria-hidden=\"true\" /></button>")
+# Add retry translation button near translation status by generic insertion before CaptionExport
+replace('frontend/src/App.tsx', "              <CaptionExport", "              {capabilities.canRetryTranslation && <button type=\"button\" className=\"secondary-button\" onClick={handleRetryTranslation}>Retry incomplete English translation</button>}\n              <CaptionExport")
+
+# CSS
+with (ROOT/'frontend/src/ux-redesign.css').open('a') as f:
+    f.write(r'''
+
+.tool-section { display: grid; gap: 1rem; margin-top: 1rem; }
+.readiness-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .65rem; }
+.readiness-grid > div { padding: .75rem; border: 1px solid var(--border); border-radius: .7rem; }
+.readiness-grid dt { color: var(--text-subtle); font-size: var(--meta-size); }
+.readiness-grid dd { margin-top: .2rem; color: var(--text); font-weight: 700; }
+.dictionary-list { display: grid; gap: .5rem; }
+.dictionary-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: .5rem; padding: .65rem; border: 1px solid var(--border); border-radius: .7rem; }
+.dictionary-row label { display: flex; gap: .65rem; align-items: center; }
+.dictionary-row label span { display: grid; gap: .15rem; }
+.dictionary-row small { color: var(--text-subtle); }
+.library-controls { display: grid; grid-template-columns: minmax(12rem,1fr) repeat(2,minmax(9rem,auto)) auto; gap: .5rem; margin-bottom: .75rem; }
+.library-controls input, .library-controls select { min-height: 44px; color: var(--text); background: var(--control-bg); border: 1px solid var(--border); border-radius: .65rem; padding: .6rem .7rem; }
+@media (max-width: 760px) { .library-controls, .readiness-grid { grid-template-columns: 1fr; } }
+''')
+
+# Eval corpus framework
+write('frontend/eval/CORPUS.md', r'''# Dexterpreter Spanish Evaluation Corpus
+
+This repository does not fabricate recorded speech. Add only clips whose speaker consent and reuse terms are documented.
+
+Each case must include: accent/region, environment, speaker count, speech rate, code-switching, consent source, exact Spanish reference, optional English reference, and timing reference when available. Store private audio outside Git; the `audio` field is a local relative path or fixture identifier.
+
+Required coverage buckets: quiet single speaker, household noise, street noise, fast speech, overlapping speech, proper nouns, numbers/dates, Mexican/Central American/Caribbean/Andean/Rioplatense/Peninsular Spanish, and Spanish-English code switching.
+
+Run `npm run eval`. WER and CER measure transcription. chrF measures translation when English references exist. The manifest also tracks omission, punctuation, and timing review status.
+''')
+write('frontend/eval/corpus.schema.json', r'''{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","required":["id","audio","reference","consent","tags"],"properties":{"id":{"type":"string"},"audio":{"type":"string"},"reference":{"type":"string"},"referenceTranslation":{"type":"string"},"consent

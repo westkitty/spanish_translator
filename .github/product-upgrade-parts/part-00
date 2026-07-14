@@ -1,0 +1,188 @@
+from pathlib import Path
+
+ROOT = Path('.')
+
+def write(path, content):
+    p = ROOT / path
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(content)
+
+def replace(path, old, new, count=1):
+    p = ROOT / path
+    text = p.read_text()
+    if old not in text:
+        raise RuntimeError(f'missing pattern in {path}: {old[:120]!r}')
+    p.write_text(text.replace(old, new, count))
+
+write('frontend/src/lib/checkpoints.ts', r'''import type { CaptionWord } from '../components/CaptionEditor';
+
+export interface ProcessingCheckpoint {
+  key: string;
+  fileName: string;
+  fileSize: number;
+  lastModified: number;
+  model: string;
+  highAccuracy: boolean;
+  completedWindows: CaptionWord[][];
+  updatedAt: number;
+}
+
+const DB_NAME = 'dexterpreter-processing';
+const STORE = 'checkpoints';
+const VERSION = 1;
+
+function openDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, VERSION);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'key' });
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error ?? new Error('Checkpoint storage could not be opened.'));
+  });
+}
+
+function run<T>(mode: IDBTransactionMode, action: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+  return openDB().then((db) => new Promise<T>((resolve, reject) => {
+    const tx = db.transaction(STORE, mode);
+    const request = action(tx.objectStore(STORE));
+    let value: T;
+    request.onsuccess = () => { value = request.result; };
+    request.onerror = () => reject(request.error ?? new Error('Checkpoint operation failed.'));
+    tx.oncomplete = () => { db.close(); resolve(value!); };
+    tx.onabort = () => { db.close(); reject(tx.error ?? new Error('Checkpoint transaction aborted.')); };
+  }));
+}
+
+export function checkpointKey(file: File, model: string, highAccuracy: boolean): string {
+  return [file.name, file.size, file.lastModified, model, highAccuracy ? 'beam' : 'greedy'].join(':');
+}
+
+export function loadCheckpoint(key: string): Promise<ProcessingCheckpoint | undefined> {
+  return run('readonly', (store) => store.get(key) as IDBRequest<ProcessingCheckpoint | undefined>);
+}
+
+export function saveCheckpoint(value: ProcessingCheckpoint): Promise<void> {
+  return run('readwrite', (store) => store.put(value) as IDBRequest<any>).then(() => undefined);
+}
+
+export function clearCheckpoint(key: string): Promise<void> {
+  return run('readwrite', (store) => store.delete(key) as IDBRequest<any>).then(() => undefined);
+}
+''')
+
+write('frontend/src/lib/correctionStore.ts', r'''import { parseGlossary, type GlossaryRule } from './glossary';
+
+export interface ManagedCorrection extends GlossaryRule {
+  id: string;
+  enabled: boolean;
+  scope: 'global' | 'project';
+  projectId?: string;
+  createdAt: number;
+}
+
+const KEY = 'dexterpreter-managed-corrections-v1';
+
+export function loadCorrections(): ManagedCorrection[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(KEY) ?? '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch { return []; }
+}
+
+export function saveCorrections(rules: ManagedCorrection[]): void {
+  localStorage.setItem(KEY, JSON.stringify(rules));
+}
+
+export function addCorrections(text: string, projectId?: string): ManagedCorrection[] {
+  const existing = loadCorrections();
+  const seen = new Set(existing.map((rule) => `${rule.scope}:${rule.projectId ?? ''}:${rule.from.toLowerCase()}`));
+  for (const rule of parseGlossary(text)) {
+    const scope = projectId ? 'project' : 'global';
+    const key = `${scope}:${projectId ?? ''}:${rule.from.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    existing.push({ ...rule, id: crypto.randomUUID(), enabled: true, scope, projectId, createdAt: Date.now() });
+  }
+  saveCorrections(existing);
+  return existing;
+}
+
+export function activeCorrectionText(projectId?: string): string {
+  return loadCorrections()
+    .filter((rule) => rule.enabled && (rule.scope === 'global' || rule.projectId === projectId))
+    .map((rule) => `${rule.from} -> ${rule.to}`)
+    .join('\n');
+}
+''')
+
+write('frontend/src/lib/offlineReadiness.ts', r'''export interface OfflineReadinessReport {
+  online: boolean;
+  persisted: boolean | null;
+  usage: number | null;
+  quota: number | null;
+  cachedEntries: number;
+  transcriptionModelCached: boolean;
+  translationModelCached: boolean;
+  lastOfflineTest: number | null;
+}
+
+const TEST_KEY = 'dexterpreter-last-offline-test';
+const ASR_HINTS = ['whisper-tiny', 'whisper-base', 'whisper-small'];
+const MT_HINT = 'opus-mt-es-en';
+
+export async function inspectOfflineReadiness(): Promise<OfflineReadinessReport> {
+  const persisted = navigator.storage?.persisted ? await navigator.storage.persisted().catch(() => null) : null;
+  const estimate = navigator.storage?.estimate ? await navigator.storage.estimate().catch(() => ({})) : {};
+  let urls: string[] = [];
+  if ('caches' in window) {
+    for (const name of await caches.keys()) {
+      const cache = await caches.open(name);
+      urls.push(...(await cache.keys()).map((request) => request.url));
+    }
+  }
+  const lower = urls.map((url) => url.toLowerCase());
+  return {
+    online: navigator.onLine,
+    persisted,
+    usage: typeof estimate.usage === 'number' ? estimate.usage : null,
+    quota: typeof estimate.quota === 'number' ? estimate.quota : null,
+    cachedEntries: urls.length,
+    transcriptionModelCached: lower.some((url) => ASR_HINTS.some((hint) => url.includes(hint))),
+    translationModelCached: lower.some((url) => url.includes(MT_HINT)),
+    lastOfflineTest: Number(localStorage.getItem(TEST_KEY)) || null,
+  };
+}
+
+export function recordOfflineTest(): void {
+  if (navigator.onLine) throw new Error('Disconnect from the network before recording an offline test.');
+  localStorage.setItem(TEST_KEY, String(Date.now()));
+}
+
+export async function requestPersistentStorage(): Promise<boolean | null> {
+  if (!navigator.storage?.persist) return null;
+  return navigator.storage.persist();
+}
+''')
+
+write('frontend/src/lib/diagnostics.ts', r'''import type { ProjectMeta } from './db';
+import { inspectOfflineReadiness } from './offlineReadiness';
+
+export async function buildDiagnostics(projects: ProjectMeta[]) {
+  const offline = await inspectOfflineReadiness();
+  return {
+    generatedAt: new Date().toISOString(),
+    app: { name: 'Dexterpreter', version: '1.0.1' },
+    runtime: {
+      userAgent: navigator.userAgent,
+      language: navigator.language,
+      online: navigator.onLine,
+      hardwareConcurrency: navigator.hardwareConcurrency ?? null,
+      deviceMemory: (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? null,
+    },
+    storage: offline,
+    projects: {
+      count: projects.length,
+      retainedAudio: projects.filter((project) => project.hasAudio).length,
+      transcriptOnly: projects.filter((project) => !project.ha

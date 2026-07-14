@@ -1,0 +1,91 @@
+":{"type":"object","required":["source","recordedAt"],"properties":{"source":{"type":"string"},"recordedAt":{"type":"string"},"notes":{"type":"string"}}},"tags":{"type":"object","properties":{"region":{"type":"string"},"environment":{"type":"string"},"speechRate":{"type":"string"},"speakers":{"type":"integer"},"codeSwitching":{"type":"boolean"}}},"timingReference":{"type":"array"}}}''')
+write('frontend/eval/corpus-manifest.json', '{"schemaVersion":1,"cases":[],"coverage":{"required":["quiet","noise","fast","overlap","proper-nouns","numbers-dates","code-switching","regional-variety"],"collected":[]}}\n')
+
+# E2E and CI/release
+write('frontend/playwright.config.ts', r'''import { defineConfig } from '@playwright/test';
+export default defineConfig({ testDir: './e2e', use: { baseURL: 'http://127.0.0.1:4173' }, webServer: { command: 'npm run build && npm run preview -- --host 127.0.0.1', port: 4173, reuseExistingServer: !process.env.CI } });
+''')
+write('frontend/e2e/core-flow.spec.ts', r'''import { expect, test } from '@playwright/test';
+
+test('start screen exposes both input paths and project tools', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Transcribe Spanish audio' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Choose file' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Record' })).toBeVisible();
+  await page.getByRole('button', { name: 'Open tools and offline readiness' }).click();
+  await expect(page.getByRole('heading', { name: 'Offline readiness' })).toBeVisible();
+});
+
+test('library supports search and import', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open saved transcripts' }).click();
+  await expect(page.getByRole('searchbox', { name: 'Search saved transcripts' })).toBeVisible();
+  await expect(page.getByText('Import project')).toBeVisible();
+});
+''')
+
+# package json edits
+replace('frontend/package.json', '"test:watch": "vitest",', '"test:watch": "vitest",\n    "test:e2e": "playwright test",')
+replace('frontend/package.json', '"@types/react-dom": "^19.0.0",', '"@types/react-dom": "^19.0.0",\n    "@playwright/test": "^1.52.0",')
+
+write('.github/workflows/product-foundation-ci.yml', r'''name: Product foundation CI
+on:
+  pull_request:
+    branches: [ui/adversarial-redesign-2026-07-14, main]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    defaults: { run: { working-directory: frontend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test
+  e2e:
+    runs-on: ubuntu-24.04
+    defaults: { run: { working-directory: frontend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+''')
+write('.github/workflows/release-preflight.yml', r'''name: Release preflight
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - working-directory: frontend
+        run: npm ci && npm run build && npm run test
+      - run: find frontend/dist -type f -print0 | sort -z | xargs -0 sha256sum > RELEASE_SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with: { name: dexterpreter-release-preflight, path: 'frontend/dist\nRELEASE_SHA256SUMS.txt' }
+''')
+write('docs/RELEASE_AND_DIAGNOSTICS.md', r'''# Release and diagnostics policy
+
+1. Pin Node and dependency lockfiles. Never publish from an uncommitted workspace.
+2. Run build, unit tests, browser end-to-end tests, Android build, and the release-preflight checksum workflow.
+3. Record model IDs and revisions in release notes. A model change is a product behavior change.
+4. Test first-run download, interrupted download, cached offline rerun, microphone denial, project migration, import/export, and long-file thermal behavior on target Android hardware.
+5. Publish SHA-256 checksums for browser artifacts and signed Android packages.
+6. Diagnostics exports must exclude transcript text and audio by default.
+7. Database migrations are append-only and require fixtures for the previous production schema.
+8. Do not mark a release offline-ready until both models have been cached and an airplane-mode transcription has completed on the target device.
+''')
+
+print('product foundation upgrade applied')
