@@ -46,8 +46,7 @@ jobs:
               print(f'part-{index:02d}', length, digest)
               if (length, digest) != expected:
                   raise SystemExit(f'Part {index} fingerprint mismatch')
-          encoded = b''.join(parts)
-          raw = gzip.decompress(base64.b64decode(encoded))
+          raw = gzip.decompress(base64.b64decode(b''.join(parts)))
           digest = hashlib.sha256(raw).hexdigest()
           expected = '915c9f25b29a6c8cc730956f4546a317dacdf4a070da506a15de7f14107122cb'
           if digest != expected:
@@ -87,8 +86,21 @@ jobs:
         working-directory: frontend
         run: npm ci
       - name: Build
+        id: build
+        continue-on-error: true
         working-directory: frontend
-        run: npm run build
+        run: npm run build > ../exhaustive-sweep-build.log 2>&1
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exhaustive-bug-sweep-build-log
+          path: exhaustive-sweep-build.log
+      - name: Stop on build failure
+        if: steps.build.outcome == 'failure'
+        run: |
+          cat exhaustive-sweep-build.log
+          exit 1
       - name: Test
         working-directory: frontend
         run: npm run test
