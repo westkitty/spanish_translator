@@ -1,4 +1,4 @@
-import { Volume2, ShieldCheck, WifiOff, Languages, ArrowRight } from 'lucide-react';
+import { ArrowRight, Download, HardDrive, Languages } from 'lucide-react';
 
 interface WelcomeScreenProps {
   onStart: () => void;
@@ -6,65 +6,47 @@ interface WelcomeScreenProps {
 
 const HIGHLIGHTS = [
   {
-    icon: ShieldCheck,
-    title: '100% private',
-    body: 'Your audio is transcribed on this device and never uploaded anywhere.',
+    icon: HardDrive,
+    title: 'Processed on this device',
+    body: 'Audio and transcripts stay in the app unless you explicitly export or share them.',
   },
   {
-    icon: WifiOff,
-    title: 'Works offline',
-    body: 'After a one-time model download, it runs with no internet and no server.',
+    icon: Download,
+    title: 'Models download when needed',
+    body: 'An internet connection is required for model files that are not already cached.',
   },
   {
     icon: Languages,
-    title: 'Spanish + English',
-    body: 'Every file produces a Spanish transcript and an English translation, automatically.',
+    title: 'Spanish transcript and English translation',
+    body: 'You can edit, copy, save, and reopen completed work on this device.',
   },
 ];
 
-// Full-screen welcome / onboarding gate. The user must hit "Get Started" to enter.
 export function WelcomeScreen({ onStart }: WelcomeScreenProps) {
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center p-5 animate-fade-in">
-      <div className="glass-strong w-full max-w-sm rounded-3xl p-6 text-center animate-scale-in">
-        {/* Brand mark */}
-        <div className="mx-auto mb-4 w-16 h-16 rounded-2xl bg-gradient-to-br from-sky-400 to-blue-600 flex items-center justify-center glow-azure">
-          <Volume2 className="w-8 h-8 text-white" />
-        </div>
-
-        <h1 className="text-xl font-extrabold tracking-tight text-white text-azure-glow">
-          Dexterpreter
-        </h1>
-        <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">
-          Offline audio transcription and translation. Spanish now. More languages later.
+    <div className="fixed inset-0 z-40 flex items-center justify-center p-5 animate-fade-in" role="presentation">
+      <div className="glass-strong w-full max-w-md rounded-3xl p-6 animate-scale-in">
+        <p className="eyebrow">How Dexterpreter works</p>
+        <h1 className="mt-1 text-2xl font-extrabold">Turn Spanish audio into usable text</h1>
+        <p className="mt-2 text-sm leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+          Choose a file or record audio, then review the Spanish transcript and English translation.
         </p>
 
-        {/* Highlights */}
-        <div className="mt-5 space-y-2.5 text-left">
+        <div className="mt-5 space-y-3">
           {HIGHLIGHTS.map(({ icon: Icon, title, body }) => (
-            <div key={title} className="glass rounded-xl p-3 flex items-start gap-3">
-              <div className="shrink-0 w-8 h-8 rounded-lg bg-sky-500/15 border border-sky-400/20 flex items-center justify-center">
-                <Icon className="w-4 h-4 text-sky-300" />
-              </div>
+            <div key={title} className="welcome-point">
+              <Icon aria-hidden="true" />
               <div>
-                <p className="text-[13px] font-semibold text-slate-100">{title}</p>
-                <p className="text-[11px] text-slate-400 leading-snug mt-0.5">{body}</p>
+                <h2>{title}</h2>
+                <p>{body}</p>
               </div>
             </div>
           ))}
         </div>
 
-        <button
-          onClick={onStart}
-          className="mt-6 w-full bg-gradient-to-r from-sky-400 to-blue-600 hover:from-sky-300 hover:to-blue-500 text-white font-bold py-3 rounded-xl text-sm transition-all active:scale-[0.98] glow-azure flex items-center justify-center gap-2 cursor-pointer"
-        >
-          Get Started
-          <ArrowRight className="w-4 h-4" />
+        <button type="button" onClick={onStart} className="primary-button mt-6 w-full">
+          Continue <ArrowRight aria-hidden="true" />
         </button>
-
-        <p className="text-[11px] mt-3 font-mono" style={{ color: 'var(--text-subtle)' }}>
-          No cloud &bull; No telemetry &bull; No account
-        </p>
       </div>
     </div>
   );

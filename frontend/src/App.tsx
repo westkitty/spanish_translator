@@ -8,8 +8,6 @@ import {
   CheckCircle,
   AlertTriangle,
   Info,
-  Cpu,
-  Languages,
   HelpCircle,
   Library,
   Mic,
@@ -30,6 +28,7 @@ import { FaqModal } from './components/FaqModal';
 import { ProgressPanel } from './components/ProgressPanel';
 import { LibraryModal } from './components/LibraryModal';
 import { AdvancedOptions } from './components/AdvancedOptions';
+import { ShellTools } from './components/ShellTools';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { useConfirmDialog } from './hooks/useConfirmDialog';
 import type { Sentence } from './lib/punctuation';
@@ -41,7 +40,6 @@ import { saveBlobFile, saveTextFile } from './lib/fileSave';
 import { getStoredFlag, setStoredFlag } from './lib/storage';
 import { availableTiers, defaultModel, type WhisperModel } from './lib/models';
 
-const WELCOME_SEEN_KEY = 'dexterpreter-seen-welcome';
 const RESULT_TIP_SEEN_KEY = 'dexterpreter-seen-result-tip';
 
 export default function App() {
@@ -51,7 +49,7 @@ export default function App() {
   const [model, setModel] = useState<WhisperModel>(() => defaultModel());
   const [vocab, setVocab] = useState('');
   const [highAccuracy, setHighAccuracy] = useState(false);
-  const [showWelcome, setShowWelcome] = useState(() => !getStoredFlag(WELCOME_SEEN_KEY));
+  const [showWelcome, setShowWelcome] = useState(false);
   const [showResultTip, setShowResultTip] = useState(() => !getStoredFlag(RESULT_TIP_SEEN_KEY));
   const [showFaq, setShowFaq] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
@@ -62,6 +60,9 @@ export default function App() {
   // Wave 2: real waveform peaks derived from decoded PCM.
   const [peaks, setPeaks] = useState<number[]>([]);
   const [learnedMsg, setLearnedMsg] = useState<string | null>(null);
+  const [retainAudio, setRetainAudio] = useState(true);
+  const [resultTab, setResultTab] = useState<'spanish' | 'english'>('spanish');
+  const [fileError, setFileError] = useState<string | null>(null);
 
   const {
     status,
@@ -79,7 +80,7 @@ export default function App() {
     setCaptions,
   } = useTranscriber();
 
-  const { projects, save, open, remove } = useProjects();
+  const { projects, status: projectStatus, error: projectError, refresh: refreshProjects, save, open, remove } = useProjects();
   const recorder = useRecorder();
 
   const [undoStack, setUndoStack] = useState<CaptionWord[][]>([]);
@@ -114,12 +115,12 @@ export default function App() {
   const handleTeachCorrections = () => {
     const learned = deriveGlossaryRules(originalRef.current ?? [], captions);
     if (learned.length === 0) {
-      setLearnedMsg('No new corrections to remember yet.');
+      setLearnedMsg('No new corrections to use on the next run.');
       return;
     }
     setVocab((v) => mergeGlossaryText(v, learned));
     setLearnedMsg(
-      `Remembered ${learned.length} correction${learned.length === 1 ? '' : 's'} for next time.`
+      `Added ${learned.length} correction${learned.length === 1 ? '' : 's'} for this session.`
     );
   };
 
@@ -192,7 +193,14 @@ export default function App() {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      setFile(e.target.files[0]);
+      const selected = e.target.files[0];
+      setFileError(null);
+      if (selected.size > 200 * 1024 * 1024) {
+        setFileError('This file is larger than the current 200 MB support limit. Choose a shorter or more compressed recording.');
+        e.target.value = '';
+        return;
+      }
+      setFile(selected);
       projectBaseRef.current = null;
       setSelectedRange(null);
       setSelectRegionMode(false);
@@ -206,6 +214,7 @@ export default function App() {
 
   const handleReset = () => {
     setFile(null);
+    setFileError(null);
     projectBaseRef.current = null;
     setSelectedRange(null);
     setSelectRegionMode(false);
@@ -229,7 +238,6 @@ export default function App() {
   };
 
   const handleDismissWelcome = () => {
-    setStoredFlag(WELCOME_SEEN_KEY);
     setShowWelcome(false);
   };
 
@@ -265,7 +273,7 @@ export default function App() {
       createdAt: Date.now(),
       model,
       durationSec,
-      audioBlob: file as Blob,
+      audioBlob: retainAudio ? (file as Blob) : new Blob([], { type: 'application/x-dexterpreter-transcript-only' }),
     };
     projectBaseRef.current = base;
     originalRef.current = captions;
@@ -274,7 +282,7 @@ export default function App() {
     // Peaks may not be ready yet (async decode) — they'll be included in the
     // autosave once computed.
     save({ ...base, words: captions, translation, updatedAt: Date.now() });
-  }, [done, file, captions, translation, model, save]);
+  }, [done, file, captions, translation, model, retainAudio, save]);
 
   // Autosave edits (debounced). Also fires when peaks become available so the
   // cached envelope is stored with the project.
@@ -354,9 +362,9 @@ export default function App() {
     pause();
     setSrc(null);
 
-    const restored = new File([p.audioBlob], `${p.name}.audio`, {
-      type: p.audioBlob.type || 'audio/*',
-    });
+    const restored = p.audioBlob.size > 0
+      ? new File([p.audioBlob], `${p.name}.audio`, { type: p.audioBlob.type || 'audio/*' })
+      : new File([], `${p.name}.transcript-only`, { type: 'application/x-dexterpreter-transcript-only' });
 
     projectBaseRef.current = {
       id: p.id,
@@ -464,7 +472,7 @@ export default function App() {
   }, [currentTime, done, seek, togglePlay]);
 
   return (
-    <div className="relative flex flex-col h-screen max-h-screen text-slate-100 p-3 md:p-6 overflow-hidden">
+    <div className="app-shell relative flex flex-col text-slate-100 p-3 md:p-6">
       <div className="app-bg" aria-hidden="true" />
 
       {showWelcome && <WelcomeScreen onStart={handleDismissWelcome} />}
@@ -473,6 +481,9 @@ export default function App() {
         open={showLibrary}
         onClose={() => setShowLibrary(false)}
         projects={projects}
+        status={projectStatus}
+        error={projectError}
+        onRetry={() => void refreshProjects()}
         onOpenProject={handleOpenProject}
         onDeleteProject={remove}
       />
@@ -490,8 +501,8 @@ export default function App() {
       )}
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <header className="relative z-10 glass rounded-2xl px-3 py-2 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
+      <header className="app-header relative z-10 rounded-2xl px-3 py-2 flex items-center justify-between">
+        <div className="app-header__brand flex items-center gap-2.5">
           <div className="bg-gradient-to-br from-sky-400 to-blue-600 p-1.5 rounded-xl glow-azure">
             <Volume2 className="w-5 h-5 text-white" />
           </div>
@@ -500,11 +511,12 @@ export default function App() {
               Dexterpreter
             </h1>
             <p className="text-[11px] font-medium" style={{ color: 'var(--text-subtle)' }}>
-              Spanish now · More languages later · No cloud
+              Spanish transcription and English translation on this device
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="app-header__actions">
+          <ShellTools />
           <button
             onClick={() => setShowLibrary(true)}
             aria-label="Open saved transcripts"
@@ -525,12 +537,17 @@ export default function App() {
       </header>
 
       {/* ── Main ───────────────────────────────────────────────────────────── */}
-      <main className="relative z-10 flex-grow flex flex-col gap-3.5 my-3 overflow-y-auto pr-0.5">
+      <main className="app-main relative z-10 flex-grow">
 
         {/* Upload / options panel — always full-width */}
-        <section className="glass rounded-2xl p-4">
+        <section className="primary-workspace">
           {!file ? (
             <div className="space-y-3">
+              <div className="start-heading">
+                <p className="eyebrow">New transcription</p>
+                <h2>Transcribe Spanish audio</h2>
+                <p>Choose an audio file or record speech. The app creates a Spanish transcript and then attempts an English translation.</p>
+              </div>
               <div className="grid grid-cols-2 gap-1 bg-white/[0.03] rounded-xl p-1">
                 <button
                   onClick={() => setInputMode('file')}
@@ -561,8 +578,8 @@ export default function App() {
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                   />
                   <FileAudio className="w-8 h-8 text-sky-300 mb-2" />
-                  <span className="text-xs font-semibold" style={{ color: 'var(--text)' }}>Choose Audio File</span>
-                  <span className="text-[11px] mt-1" style={{ color: 'var(--text-subtle)' }}>MP3, WAV, M4A, OGG</span>
+                  <span className="text-base font-semibold" style={{ color: 'var(--text)' }}>Choose audio file</span>
+                  <span className="text-sm mt-1" style={{ color: 'var(--text-subtle)' }}>MP3, WAV, M4A, or OGG · up to 200 MB</span>
                 </div>
               ) : (
                 <div className="rounded-xl border border-white/10 bg-white/[0.03] p-5 text-center space-y-4">
@@ -625,39 +642,24 @@ export default function App() {
                 </button>
               </div>
 
-              {/* Engine options */}
               {!isWorking && !done && (
-                <div className="space-y-2">
-                  <label className="flex flex-col gap-1">
-                    <span className="text-[11px] uppercase tracking-wide flex items-center gap-1" style={{ color: 'var(--text-subtle)' }}>
-                      <Cpu className="w-3 h-3" /> Model
-                    </span>
-                    <select
-                      value={model}
-                      onChange={(e) => setModel(e.target.value as WhisperModel)}
-                      className="bg-white/[0.04] border border-white/10 rounded-lg px-2 py-2 text-xs focus:outline-none min-h-[44px]"
-                      style={{ color: 'var(--text)', borderColor: 'var(--border)' }}
-                    >
-                      {tiers.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.label}{t.recommended ? ' · recommended' : ''}
-                        </option>
-                      ))}
-                    </select>
-                    <span className="text-[11px]" style={{ color: 'var(--text-subtle)' }}>
-                      {tiers.find((t) => t.id === model)?.blurb}
-                    </span>
-                  </label>
-                  <p className="text-[11px] flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
-                    <Languages className="w-3 h-3 text-sky-300" />
-                    Current pipeline: Spanish audio to Spanish transcript <span style={{ color: 'var(--text-subtle)' }}>+</span> English translation.
-                  </p>
-                  <AdvancedOptions
-                    vocab={vocab}
-                    onVocabChange={setVocab}
-                    highAccuracy={highAccuracy}
-                    onHighAccuracyChange={setHighAccuracy}
-                  />
+                <AdvancedOptions
+                  model={model}
+                  tiers={tiers}
+                  onModelChange={setModel}
+                  vocab={vocab}
+                  onVocabChange={setVocab}
+                  highAccuracy={highAccuracy}
+                  onHighAccuracyChange={setHighAccuracy}
+                  retainAudio={retainAudio}
+                  onRetainAudioChange={setRetainAudio}
+                />
+              )}
+
+              {fileError && (
+                <div className="state-message state-message--error" role="alert">
+                  <AlertTriangle aria-hidden="true" />
+                  <div><strong>File not supported</strong><p>{fileError}</p></div>
                 </div>
               )}
 
@@ -684,7 +686,7 @@ export default function App() {
 
               {!isWorking && !done && (
                 <p className="text-[11px] text-center font-mono" style={{ color: 'var(--text-subtle)' }}>
-                  First run downloads the model once, then works fully offline.
+                  Audio is processed on this device. Uncached model files require an internet connection once.
                 </p>
               )}
 
@@ -717,14 +719,26 @@ export default function App() {
           />
         )}
 
-        {/* ── Results — two-pane on lg+, single-column on mobile ─────────── */}
         {done && (
-          // Wave 3: on ≥1024px use a two-column grid so Spanish and English sit
-          // side-by-side. On narrower screens falls back to single-column.
-          <div className="grid lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start gap-3.5">
+          <div className="space-y-3">
+            <div className="result-status" role="status">
+              <span className="status-chip" data-state="complete"><CheckCircle aria-hidden="true" /> Spanish transcript complete</span>
+              <span className="status-chip" data-state={translation?.segments.some((segment) => segment.text.trim()) ? 'complete' : 'warning'}>
+                <Languages aria-hidden="true" /> {translation?.segments.some((segment) => segment.text.trim()) ? 'English translation complete' : 'English translation unavailable'}
+              </span>
+              <span className="status-chip" data-state={projectStatus === 'error' ? 'error' : projectStatus === 'saving' ? 'warning' : 'complete'}>
+                {projectStatus === 'saving' ? 'Saving on this device…' : projectStatus === 'error' ? 'Not saved' : 'Saved on this device'}
+              </span>
+              <span className="status-chip">{retainAudio ? 'Source audio retained' : 'Transcript only; source audio not retained'}</span>
+            </div>
+            <div className="mobile-result-tabs" aria-label="Result language">
+              <button type="button" onClick={() => setResultTab('spanish')} aria-pressed={resultTab === 'spanish'}>Spanish</button>
+              <button type="button" onClick={() => setResultTab('english')} aria-pressed={resultTab === 'english'}>English</button>
+            </div>
+            <div className="results-grid">
 
             {/* Left column: player + waveform + Spanish editor + export */}
-            <div className="flex flex-col gap-3.5 min-w-0">
+            <div className="result-pane flex flex-col gap-3.5 min-w-0" data-active={resultTab === 'spanish'}>
 
               {/* Result tip */}
               {showResultTip && (
@@ -733,7 +747,7 @@ export default function App() {
                   <div className="flex-grow">
                     <p className="text-xs font-semibold" style={{ color: 'var(--text)' }}>Your transcript is ready.</p>
                     <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                      Tap any Spanish word to fix it, or open Read view for sentence-style editing and clip export.
+                      Read the result first. Open Edit words only when you need timestamped corrections.
                     </p>
                   </div>
                   <button
@@ -747,7 +761,8 @@ export default function App() {
               )}
 
               {/* Player card: waveform + transport + region/loop controls */}
-              <div className="player-card glass rounded-2xl p-4 space-y-3">
+              {file && file.size > 0 ? (
+              <div className="player-card space-y-3">
                 <AudioCanvas
                   duration={duration}
                   currentTime={currentTime}
@@ -773,13 +788,15 @@ export default function App() {
                     <button
                       onClick={() => seek(0)}
                       className="min-w-[44px] min-h-[44px] flex items-center justify-center bg-white/[0.04] border border-white/10 rounded-full hover:bg-white/10 hover:text-white transition-colors active:scale-90 cursor-pointer"
-                      title="Restart"
+                      title="Restart audio"
+                      aria-label="Restart audio"
                       style={{ color: 'var(--text-muted)' }}
                     >
                       <RotateCcw className="w-4 h-4" />
                     </button>
                     <button
                       onClick={togglePlay}
+                      aria-label={isPlaying ? 'Pause audio' : 'Play audio'}
                       className="p-3 bg-gradient-to-br from-sky-400 to-blue-600 text-white rounded-full hover:scale-105 active:scale-95 transition-all glow-azure cursor-pointer"
                     >
                       {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
@@ -791,8 +808,10 @@ export default function App() {
                   </div>
                 </div>
 
+                <details className="advanced-editing">
+                  <summary>Advanced audio editing</summary>
                 {/* Region controls */}
-                <div className="flex flex-wrap items-center gap-2 border-t border-white/10 pt-3">
+                <div className="flex flex-wrap items-center gap-2 pt-3">
                   <button
                     onClick={() => setSelectRegionMode((v) => !v)}
                     className={`px-3 min-h-[44px] rounded-lg border text-[11px] font-semibold transition-colors cursor-pointer ${
@@ -876,7 +895,11 @@ export default function App() {
                     Shortcuts: Space play/pause · ← / → seek 5s
                   </p>
                 </div>
+                </details>
               </div>
+              ) : (
+                <div className="state-message"><Info aria-hidden="true" /><div><strong>Transcript-only project</strong><p>The source audio was not retained, so playback and clip tools are unavailable.</p></div></div>
+              )}
 
               {/* "Remember corrections" inline link */}
               {originalRef.current !== null && originalRef.current !== captions && (
@@ -885,9 +908,9 @@ export default function App() {
                     onClick={handleTeachCorrections}
                     className="text-[11px] font-medium hover:text-sky-200 cursor-pointer transition-colors min-h-[44px]"
                     style={{ color: 'var(--accent-bright)' }}
-                    title="Save your edits as reusable corrections"
+                    title="Use these edits as corrections during the next run in this session"
                   >
-                    Remember my corrections
+                    Use edits on next run
                   </button>
                   {learnedMsg && <span className="text-[11px]" style={{ color: 'var(--text-subtle)' }}>{learnedMsg}</span>}
                 </div>
@@ -922,7 +945,7 @@ export default function App() {
             </div>
 
             {/* Right column: synced English translation — sticky on tablet */}
-            <div className="lg:sticky lg:top-0 lg:self-start lg:max-h-[calc(100svh-6rem)] lg:overflow-y-auto">
+            <div className="result-pane translation-pane" data-active={resultTab === 'english'}>
               <TranslationPanel
                 translation={translation}
                 currentTime={currentTime}
@@ -930,12 +953,13 @@ export default function App() {
               />
             </div>
           </div>
+          </div>
         )}
       </main>
 
       {/* ── Footer ─────────────────────────────────────────────────────────── */}
       <footer className="relative z-10 text-[11px] text-center py-1.5 mt-auto flex items-center justify-center gap-1 font-mono" style={{ color: 'var(--text-subtle)' }}>
-        <Info className="w-3 h-3" /> Dexterpreter &bull; On-device &bull; No cloud
+        <Info className="w-3 h-3" /> Audio and transcripts are processed locally; uncached models download when needed
       </footer>
     </div>
   );
