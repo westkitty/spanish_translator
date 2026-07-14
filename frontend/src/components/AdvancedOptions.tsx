@@ -1,65 +1,91 @@
 import { useState } from 'react';
-import { ChevronDown, Sparkles } from 'lucide-react';
+import { ChevronDown, Settings2 } from 'lucide-react';
+import type { ModelTier, WhisperModel } from '../lib/models';
 
 interface AdvancedOptionsProps {
+  model: WhisperModel;
+  tiers: ModelTier[];
+  onModelChange: (model: WhisperModel) => void;
   vocab: string;
-  onVocabChange: (v: string) => void;
+  onVocabChange: (value: string) => void;
   highAccuracy: boolean;
-  onHighAccuracyChange: (v: boolean) => void;
+  onHighAccuracyChange: (value: boolean) => void;
+  retainAudio: boolean;
+  onRetainAudioChange: (value: boolean) => void;
 }
 
-// Optional, collapsed-by-default controls so the default experience stays simple.
 export function AdvancedOptions({
+  model,
+  tiers,
+  onModelChange,
   vocab,
   onVocabChange,
   highAccuracy,
   onHighAccuracyChange,
+  retainAudio,
+  onRetainAudioChange,
 }: AdvancedOptionsProps) {
   const [open, setOpen] = useState(false);
+  const selectedTier = tiers.find((tier) => tier.id === model);
 
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden">
+    <div className="run-settings">
       <button
-        onClick={() => setOpen((v) => !v)}
+        type="button"
+        onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
-        className="w-full flex items-center gap-2 px-3 py-2 text-left cursor-pointer hover:bg-white/[0.03] transition-colors"
+        className="run-settings__trigger"
       >
-        <Sparkles className="w-3.5 h-3.5 text-sky-300" />
-        <span className="text-[11px] font-semibold text-slate-200">Fine-tune the result (optional)</span>
-        <ChevronDown
-          className={`w-4 h-4 text-slate-400 ml-auto transition-transform ${open ? 'rotate-180' : ''}`}
-        />
+        <Settings2 aria-hidden="true" />
+        <span>Advanced settings</span>
+        <span className="run-settings__summary">{selectedTier?.label ?? 'Base'} model</span>
+        <ChevronDown aria-hidden="true" className={open ? 'rotate-180' : ''} />
       </button>
 
       {open && (
-        <div className="px-3 pb-3 space-y-3 animate-fade-in">
-          <label className="block">
-            <span className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--text-subtle)' }}>
-              Corrections &amp; names
-            </span>
-            <textarea
-              value={vocab}
-              onChange={(e) => onVocabChange(e.target.value)}
-              rows={3}
-              placeholder={'watsap -> WhatsApp\nJosé\nNueva York'}
-              className="mt-1 w-full bg-white/[0.04] text-slate-100 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs font-mono focus:border-sky-400 focus:outline-none resize-none placeholder:text-slate-600"
-            />
-            <span className="text-[11px] mt-1 block" style={{ color: 'var(--text-subtle)' }}>
-              One per line. Write <span style={{ color: 'var(--text-muted)' }}>wrong -&gt; right</span> to fix a
-              word, or just type a name to lock its spelling. Applied after transcribing.
-            </span>
+        <div className="run-settings__body">
+          <label className="field-stack">
+            <span className="field-label">Transcription model</span>
+            <select value={model} onChange={(event) => onModelChange(event.target.value as WhisperModel)}>
+              {tiers.map((tier) => (
+                <option key={tier.id} value={tier.id}>{tier.label}</option>
+              ))}
+            </select>
+            <span className="field-help">{selectedTier?.blurb}</span>
           </label>
 
-          <label className="flex items-center justify-between gap-3 cursor-pointer">
+          <label className="field-stack">
+            <span className="field-label">Names and corrections for this run</span>
+            <textarea
+              value={vocab}
+              onChange={(event) => onVocabChange(event.target.value)}
+              rows={3}
+              placeholder={'watsap -> WhatsApp\nJosé\nNueva York'}
+            />
+            <span className="field-help">One entry per line. These rules apply to the Spanish transcript for this session.</span>
+          </label>
+
+          <label className="setting-row">
             <span>
-              <span className="text-[12px] font-medium text-slate-200 block">Try harder for accuracy</span>
-              <span className="text-[11px]" style={{ color: 'var(--text-subtle)' }}>Slower, but can catch more.</span>
+              <strong>Higher-quality pass</strong>
+              <small>May use more memory and take substantially longer.</small>
             </span>
             <input
               type="checkbox"
               checked={highAccuracy}
-              onChange={(e) => onHighAccuracyChange(e.target.checked)}
-              className="w-4 h-4 accent-sky-500 cursor-pointer"
+              onChange={(event) => onHighAccuracyChange(event.target.checked)}
+            />
+          </label>
+
+          <label className="setting-row">
+            <span>
+              <strong>Keep source audio in the library</strong>
+              <small>Turn this off to save only the transcript and translation.</small>
+            </span>
+            <input
+              type="checkbox"
+              checked={retainAudio}
+              onChange={(event) => onRetainAudioChange(event.target.checked)}
             />
           </label>
         </div>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-type RecorderStatus = 'idle' | 'recording' | 'ready' | 'error';
+type RecorderStatus = 'idle' | 'requesting' | 'recording' | 'ready' | 'error';
 
 export function useRecorder() {
   const [status, setStatus] = useState<RecorderStatus>('idle');
@@ -8,7 +8,6 @@ export function useRecorder() {
   const [elapsedMs, setElapsedMs] = useState(0);
   const [level, setLevel] = useState(0);
   const [error, setError] = useState<string | null>(null);
-
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -16,17 +15,12 @@ export function useRecorder() {
   const timerRef = useRef<number | null>(null);
   const animationRef = useRef<number | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const requestVersionRef = useRef(0);
 
   const stopMeters = useCallback(() => {
-    if (timerRef.current !== null) {
-      window.clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-    if (animationRef.current !== null) {
-      window.cancelAnimationFrame(animationRef.current);
-      animationRef.current = null;
-    }
-    audioContextRef.current?.close();
+    if (timerRef.current !== null) { window.clearInterval(timerRef.current); timerRef.current = null; }
+    if (animationRef.current !== null) { window.cancelAnimationFrame(animationRef.current); animationRef.current = null; }
+    void audioContextRef.current?.close();
     audioContextRef.current = null;
     setLevel(0);
   }, []);
@@ -37,14 +31,14 @@ export function useRecorder() {
   }, []);
 
   const clear = useCallback(() => {
+    requestVersionRef.current += 1;
     const recorder = recorderRef.current;
     if (recorder) {
       recorder.ondataavailable = null;
       recorder.onstop = null;
+      recorder.onerror = null;
     }
-    if (recorder && recorder.state !== 'inactive') {
-      recorder.stop();
-    }
+    if (recorder && recorder.state !== 'inactive') recorder.stop();
     recorderRef.current = null;
     stopMeters();
     stopStream();
@@ -57,90 +51,79 @@ export function useRecorder() {
 
   const stop = useCallback(() => {
     const recorder = recorderRef.current;
-    if (recorder && recorder.state !== 'inactive') {
-      recorder.stop();
-    }
+    if (recorder && recorder.state !== 'inactive') recorder.stop();
     stopMeters();
   }, [stopMeters]);
 
   const start = useCallback(async () => {
+    if (status === 'requesting' || status === 'recording') return;
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
       setError('Recording is not available in this browser.');
       setStatus('error');
       return;
     }
 
+    clear();
+    const requestVersion = ++requestVersionRef.current;
+    setStatus('requesting');
+    setError(null);
+
     try {
-      clear();
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (requestVersion !== requestVersionRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       streamRef.current = stream;
       chunksRef.current = [];
-
       const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : undefined;
       const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       recorderRef.current = recorder;
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          chunksRef.current.push(event.data);
-        }
+      recorder.ondataavailable = (event) => { if (event.data.size > 0) chunksRef.current.push(event.data); };
+      recorder.onerror = () => {
+        stopMeters();
+        stopStream();
+        recorderRef.current = null;
+        setError('Recording stopped because the browser reported a microphone recording error.');
+        setStatus('error');
       };
       recorder.onstop = () => {
         const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' });
-        const recordedFile = new File([blob], `recording-${new Date().toISOString()}.webm`, {
-          type: blob.type,
-        });
-        setFile(recordedFile);
+        setFile(new File([blob], `recording-${Date.now()}.webm`, { type: blob.type }));
         setStatus('ready');
         stopStream();
         recorderRef.current = null;
       };
 
-      const AudioCtx: typeof AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      const AudioCtx: typeof AudioContext | undefined = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) throw new Error('Audio level monitoring is unavailable.');
       const audioContext = new AudioCtx();
       const source = audioContext.createMediaStreamSource(stream);
       const analyser = audioContext.createAnalyser();
       analyser.fftSize = 256;
       source.connect(analyser);
       audioContextRef.current = audioContext;
-
       const data = new Uint8Array(analyser.frequencyBinCount);
       const tickLevel = () => {
         analyser.getByteFrequencyData(data);
-        const average = data.reduce((sum, value) => sum + value, 0) / data.length;
-        setLevel(Math.min(1, average / 128));
+        setLevel(Math.min(1, data.reduce((sum, value) => sum + value, 0) / data.length / 128));
         animationRef.current = window.requestAnimationFrame(tickLevel);
       };
 
       recorder.start();
       startedAtRef.current = Date.now();
-      timerRef.current = window.setInterval(() => {
-        setElapsedMs(Date.now() - startedAtRef.current);
-      }, 250);
+      timerRef.current = window.setInterval(() => setElapsedMs(Date.now() - startedAtRef.current), 250);
       tickLevel();
       setStatus('recording');
-    } catch (err: any) {
+    } catch (cause: any) {
+      if (requestVersion !== requestVersionRef.current) return;
       stopMeters();
       stopStream();
-      setError(`Microphone access did not start. (${err?.message ?? err})`);
+      setError(`Microphone access did not start. (${cause?.message ?? cause})`);
       setStatus('error');
     }
-  }, [clear, stopMeters, stopStream]);
+  }, [clear, status, stopMeters, stopStream]);
 
-  useEffect(() => {
-    return () => {
-      const recorder = recorderRef.current;
-      if (recorder) {
-        recorder.ondataavailable = null;
-        recorder.onstop = null;
-      }
-      if (recorder && recorder.state !== 'inactive') {
-        recorder.stop();
-      }
-      recorderRef.current = null;
-      stopMeters();
-      stopStream();
-    };
-  }, [stopMeters, stopStream]);
-
+  useEffect(() => () => clear(), [clear]);
   return { status, file, elapsedMs, level, error, start, stop, clear };
 }

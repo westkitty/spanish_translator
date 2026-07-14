@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Type, AlignLeft, Search, Undo2, Redo2, History, Download } from 'lucide-react';
+import { AlignLeft, Download, History, Redo2, Search, Type, Undo2 } from 'lucide-react';
 import { CaptionEditor, type CaptionWord } from './CaptionEditor';
 import { buildSentences, type Sentence } from '../lib/punctuation';
 import type { SilenceRange } from '../lib/vad';
@@ -18,177 +18,86 @@ interface TranscriptViewProps {
   canRedo: boolean;
   canRevert: boolean;
   silences?: SilenceRange[];
-  onExportClip?: (sentence: Sentence) => void;
+  onExportClip?: (sentence: Sentence) => Promise<void> | void;
+  audioAvailable?: boolean;
 }
 
-export function TranscriptView({
-  captions,
-  currentTime,
-  onUpdateWord,
-  onPause,
-  onSeek,
-  onReplaceAll,
-  onUndo,
-  onRedo,
-  onRevert,
-  canUndo,
-  canRedo,
-  canRevert,
-  silences = [],
-  onExportClip,
-}: TranscriptViewProps) {
-  const [mode, setMode] = useState<'words' | 'read'>('words');
-  const [showFind, setShowFind] = useState(false);
+export function TranscriptView({ captions, currentTime, onUpdateWord, onPause, onSeek, onReplaceAll, onUndo, onRedo, onRevert, canUndo, canRedo, canRevert, silences = [], onExportClip, audioAvailable = true }: TranscriptViewProps) {
+  const [mode, setMode] = useState<'words' | 'read'>('read');
   const [find, setFind] = useState('');
   const [replace, setReplace] = useState('');
   const [lastCount, setLastCount] = useState<number | null>(null);
   const [followPlayhead, setFollowPlayhead] = useState(true);
-  const activeSentenceRef = useRef<HTMLDivElement | null>(null);
-
+  const [exportingId, setExportingId] = useState<string | null>(null);
+  const activeSentenceRef = useRef<HTMLButtonElement | null>(null);
   const sentences = useMemo(() => buildSentences(captions, silences), [captions, silences]);
+  const activeSentenceId = audioAvailable ? sentences.find((sentence) => currentTime >= sentence.start && currentTime <= sentence.end)?.id ?? null : null;
 
   useEffect(() => {
-    if (mode !== 'read' || !followPlayhead) return;
-    activeSentenceRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }, [currentTime, followPlayhead, mode]);
+    if (audioAvailable && mode === 'read' && followPlayhead && activeSentenceId) {
+      activeSentenceRef.current?.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+    }
+  }, [activeSentenceId, audioAvailable, followPlayhead, mode]);
 
-  const tabBtn = (active: boolean) =>
-    `flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
-      active ? 'bg-sky-500/20 text-sky-200 border border-sky-400/30' : 'text-slate-400 hover:text-white border border-transparent'
-    }`;
-
-  const iconBtn = (enabled: boolean) =>
-    `p-1.5 rounded-lg transition-colors ${
-      enabled ? 'hover:text-white hover:bg-white/10 cursor-pointer' : 'cursor-not-allowed opacity-30'
-    }`;
-
-  const iconBtnStyle = (enabled: boolean) =>
-    ({ color: enabled ? 'var(--text-muted)' : 'var(--text-subtle)' }) as const;
+  const exportClip = async (sentence: Sentence) => {
+    if (!onExportClip || exportingId) return;
+    setExportingId(sentence.id);
+    try { await onExportClip(sentence); } finally { setExportingId(null); }
+  };
 
   return (
-    <div className="flex flex-col glass rounded-2xl p-4 flex-grow h-0 min-h-[320px] lg:flex-none lg:h-auto lg:min-h-[420px]">
-      {/* Toolbar */}
-      <div className="flex items-center gap-2 border-b border-white/10 pb-3 mb-3 flex-wrap">
-        <div className="flex items-center gap-1 bg-white/[0.03] rounded-lg p-0.5">
-          <button onClick={() => setMode('words')} className={tabBtn(mode === 'words')}>
-            <Type className="w-3.5 h-3.5" /> Word edit
-          </button>
-          <button onClick={() => setMode('read')} className={tabBtn(mode === 'read')}>
-            <AlignLeft className="w-3.5 h-3.5" /> Sentence review
-          </button>
+    <section className="result-section transcript-section" aria-labelledby="transcript-heading">
+      <div className="section-heading section-heading--stackable">
+        <div>
+          <h2 id="transcript-heading">Spanish transcript</h2>
+          <p>{mode === 'read' ? (audioAvailable ? 'Read and seek by sentence.' : 'Read the complete saved transcript.') : 'Edit individual transcript words.'}</p>
         </div>
-        {mode === 'read' && (
-          <button
-            type="button"
-            onClick={() => setFollowPlayhead((value) => !value)}
-            className="translation-follow-toggle"
-            aria-pressed={followPlayhead}
-            title={followPlayhead ? 'Stop auto-following the active Spanish sentence' : 'Follow the active Spanish sentence'}
-          >
-            {followPlayhead ? 'Following' : 'Follow off'}
-          </button>
-        )}
-        <p className="w-full order-last text-[11px]" style={{ color: 'var(--text-subtle)' }}>
-          {mode === 'words'
-            ? 'Word edit is best for timestamp fixes and precise correction.'
-            : 'Sentence review is best for reading, clipping, and export checks.'}
-        </p>
-
-        <div className="ml-auto flex items-center gap-0.5">
-          <button onClick={() => setShowFind((v) => !v)} className={iconBtn(true)} style={iconBtnStyle(true)} aria-label="Find and replace">
-            <Search className="w-4 h-4" />
-          </button>
-          <button onClick={onUndo} disabled={!canUndo} className={iconBtn(canUndo)} style={iconBtnStyle(canUndo)} aria-label="Undo">
-            <Undo2 className="w-4 h-4" />
-          </button>
-          <button onClick={onRedo} disabled={!canRedo} className={iconBtn(canRedo)} style={iconBtnStyle(canRedo)} aria-label="Redo">
-            <Redo2 className="w-4 h-4" />
-          </button>
-          <button onClick={onRevert} disabled={!canRevert} className={iconBtn(canRevert)} style={iconBtnStyle(canRevert)} aria-label="Revert to original" title="Revert to original">
-            <History className="w-4 h-4" />
-          </button>
+        <div className="segmented-control" role="group" aria-label="Transcript view">
+          <button type="button" onClick={() => setMode('read')} aria-pressed={mode === 'read'}><AlignLeft aria-hidden="true" /> Read</button>
+          <button type="button" onClick={() => setMode('words')} aria-pressed={mode === 'words'}><Type aria-hidden="true" /> Edit words</button>
         </div>
       </div>
 
-      {/* Find & replace */}
-      {showFind && (
-        <div className="flex items-center gap-2 mb-3 animate-fade-in flex-wrap">
-          <input
-            value={find}
-            onChange={(e) => setFind(e.target.value)}
-            placeholder="Find"
-            className="flex-1 min-w-[80px] bg-white/[0.04] text-slate-100 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs focus:border-sky-400 focus:outline-none"
-          />
-          <input
-            value={replace}
-            onChange={(e) => setReplace(e.target.value)}
-            placeholder="Replace with"
-            className="flex-1 min-w-[80px] bg-white/[0.04] text-slate-100 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs focus:border-sky-400 focus:outline-none"
-          />
-          <button
-            onClick={() => find && setLastCount(onReplaceAll(find, replace))}
-            className="bg-sky-500/20 text-sky-200 border border-sky-400/30 rounded-lg px-3 py-1.5 text-[11px] font-semibold hover:bg-sky-500/30 transition-colors cursor-pointer"
-          >
-            Replace all
-          </button>
-          {lastCount !== null && (
-            <span className="text-[11px] font-mono w-full" style={{ color: 'var(--text-subtle)' }}>
-              {lastCount === 0 ? 'No matches found' : `Replaced ${lastCount} occurrence${lastCount === 1 ? '' : 's'}`}
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Body */}
-      {mode === 'words' ? (
-        <CaptionEditor
-          captions={captions}
-          currentTime={currentTime}
-          onUpdateWord={onUpdateWord}
-          onPause={onPause}
-          onSeek={onSeek}
-          embedded
-        />
-      ) : (
-        <div className="flex-grow overflow-y-auto pr-1 space-y-3 select-text lg:overflow-visible lg:flex-none">
-          {sentences.length === 0 ? (
-            <p className="text-xs text-center py-6" style={{ color: 'var(--text-subtle)' }}>No transcript yet.</p>
-          ) : (
-            sentences.map((s) => {
-              const active = currentTime >= s.start && currentTime <= s.end;
+      {mode === 'read' ? (
+        <>
+          {audioAvailable && <button type="button" className="compact-toggle mb-3" onClick={() => setFollowPlayhead((value) => !value)} aria-pressed={followPlayhead}>{followPlayhead ? 'Following audio' : 'Follow off'}</button>}
+          <div className="sentence-list">
+            {sentences.length === 0 ? <div className="empty-state empty-state--compact"><p>No transcript yet.</p></div> : sentences.map((sentence) => {
+              const active = audioAvailable && currentTime >= sentence.start && currentTime <= sentence.end;
               return (
-                <div
-                  key={s.id}
-                  ref={active ? activeSentenceRef : undefined}
-                  onClick={() => onSeek(s.start)}
-                  className="group cursor-pointer px-2.5 py-1.5 rounded-lg text-sm leading-relaxed transition-colors border"
-                  style={
-                    active
-                      ? { background: 'var(--accent-bg)', color: 'var(--accent-bright)', borderColor: 'var(--accent-border)' }
-                      : { color: 'var(--text-muted)', borderColor: 'transparent' }
-                  }
-                >
-                  <p>{s.text}</p>
-                  {onExportClip && (
-                    <button
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onExportClip(s);
-                      }}
-                      className="mt-1.5 inline-flex items-center gap-1 text-[11px] transition-colors cursor-pointer min-h-[44px] px-1"
-                      style={{ color: 'var(--text-subtle)' }}
-                      onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--accent-bright)')}
-                      onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-subtle)')}
-                    >
-                      <Download className="w-3 h-3" /> Export clip
-                    </button>
+                <div key={sentence.id} className="sentence-row" data-active={active}>
+                  {audioAvailable ? (
+                    <button ref={active ? activeSentenceRef : undefined} type="button" onClick={() => onSeek(sentence.start)} className="sentence-row__seek" aria-label={`Seek to ${sentence.start.toFixed(1)} seconds: ${sentence.text}`}>{sentence.text}</button>
+                  ) : <p className="sentence-row__text">{sentence.text}</p>}
+                  {audioAvailable && onExportClip && (
+                    <button type="button" onClick={() => void exportClip(sentence)} disabled={exportingId !== null} className="sentence-row__clip"><Download aria-hidden="true" /> {exportingId === sentence.id ? 'Exporting…' : 'Export clip'}</button>
                   )}
                 </div>
               );
-            })
-          )}
-        </div>
+            })}
+          </div>
+        </>
+      ) : (
+        <CaptionEditor captions={captions} currentTime={currentTime} onUpdateWord={onUpdateWord} onPause={onPause} onSeek={onSeek} embedded audioAvailable={audioAvailable} />
       )}
-    </div>
+
+      <details className="editor-tools">
+        <summary>Editing tools</summary>
+        <div className="editor-tools__body">
+          <div className="toolbar-actions" aria-label="Transcript history controls">
+            <button type="button" onClick={onUndo} disabled={!canUndo}><Undo2 aria-hidden="true" /> Undo</button>
+            <button type="button" onClick={onRedo} disabled={!canRedo}><Redo2 aria-hidden="true" /> Redo</button>
+            <button type="button" onClick={onRevert} disabled={!canRevert}><History aria-hidden="true" /> Revert</button>
+          </div>
+          <div className="find-replace">
+            <Search aria-hidden="true" />
+            <label><span>Find</span><input value={find} onChange={(event) => setFind(event.target.value)} /></label>
+            <label><span>Replace with</span><input value={replace} onChange={(event) => setReplace(event.target.value)} /></label>
+            <button type="button" disabled={!find} onClick={() => setLastCount(onReplaceAll(find, replace))}>Replace all</button>
+          </div>
+          {lastCount !== null && <p className="field-help" aria-live="polite">{lastCount === 0 ? 'No matches found.' : `Replaced ${lastCount} occurrence${lastCount === 1 ? '' : 's'}.`}</p>}
+        </div>
+      </details>
+    </section>
   );
 }

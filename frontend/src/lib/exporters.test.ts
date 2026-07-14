@@ -48,6 +48,18 @@ describe('exporters', () => {
     expect(out).toContain('"hola",0.000,0.500');
   });
 
+  it('removes spaces before punctuation in saved text and bilingual subtitles', () => {
+    const punctuated = [
+      { id: 'p0', text: 'hola', start: 0, end: 0.2 },
+      { id: 'p1', text: ',', start: 0.2, end: 0.3 },
+      { id: 'p2', text: 'mundo', start: 0.3, end: 0.7 },
+      { id: 'p3', text: '!', start: 0.7, end: 0.8 },
+    ];
+    const translated = { text: 'hello world', segments: [{ id: 's', text: 'hello world', start: 0, end: 1 }] };
+    expect(toTxt({ words: punctuated, translation: null })).toContain('hola, mundo!');
+    expect(toBilingualSrt({ words: punctuated, translation: translated })).toContain('hola, mundo!\nhello world');
+  });
+
   it('handles a missing translation gracefully', () => {
     expect(toSrt({ words, translation: null })).toBe('\n');
     expect(toTxt({ words, translation: null })).not.toContain('English');

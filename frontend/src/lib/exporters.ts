@@ -5,6 +5,7 @@
 import { formatTimestamp } from './srt';
 import type { CaptionWord } from '../components/CaptionEditor';
 import type { Translation, TranslationSegment } from '../hooks/useTranscriber';
+import { formatTranscriptText } from './uiState';
 
 export interface ExportInput {
   words: CaptionWord[];
@@ -12,15 +13,11 @@ export interface ExportInput {
 }
 
 function spanishText(words: CaptionWord[]): string {
-  return words.map((w) => w.text).join(' ').trim();
+  return formatTranscriptText(words);
 }
 
 function wordsInRange(words: CaptionWord[], start: number, end: number): string {
-  return words
-    .filter((w) => w.end > start && w.start < end)
-    .map((w) => w.text)
-    .join(' ')
-    .trim();
+  return formatTranscriptText(words.filter((w) => w.end > start && w.start < end));
 }
 
 /** Plain text: Spanish transcript, then the English translation (if present). */

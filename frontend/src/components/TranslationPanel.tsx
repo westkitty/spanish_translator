@@ -6,74 +6,42 @@ interface TranslationPanelProps {
   translation: Translation | null;
   currentTime: number;
   onSeek: (time: number) => void;
+  audioAvailable?: boolean;
 }
 
-// Read-only English translation shown alongside the editable Spanish transcript.
-// Segments are sentence-level and clickable to seek. The active segment can scroll
-// into view as the playhead moves, with an explicit follow toggle for review work.
-export function TranslationPanel({ translation, currentTime, onSeek }: TranslationPanelProps) {
-  const activeRef = useRef<HTMLParagraphElement | null>(null);
+export function TranslationPanel({ translation, currentTime, onSeek, audioAvailable = true }: TranslationPanelProps) {
+  const activeRef = useRef<HTMLButtonElement | null>(null);
   const [followPlayhead, setFollowPlayhead] = useState(true);
+  const segments = translation?.segments.filter((segment) => segment.text.trim().length > 0) ?? [];
+  const activeSegmentId = audioAvailable ? segments.find((segment) => currentTime >= segment.start && currentTime <= segment.end)?.id ?? null : null;
 
-  // Scroll the active segment into view whenever the playhead crosses a boundary.
   useEffect(() => {
-    if (!followPlayhead) return;
-    activeRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }, [currentTime, followPlayhead]);
-
-  if (!translation || translation.segments.length === 0) {
-    return null;
-  }
+    if (audioAvailable && followPlayhead && activeSegmentId) activeRef.current?.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+  }, [activeSegmentId, audioAvailable, followPlayhead]);
 
   return (
-    <div className="glass rounded-2xl p-4 flex flex-col min-h-0">
-      <div className="flex items-center gap-2 border-b border-white/10 pb-3 mb-3 shrink-0 flex-wrap">
-        <Languages className="w-4 h-4 shrink-0" style={{ color: 'var(--trans)' }} />
-        <h2 className="text-sm font-semibold tracking-wide" style={{ color: 'var(--text)' }}>
-          ENGLISH TRANSLATION
-        </h2>
-        <span className="ml-auto text-[11px] font-mono" style={{ color: 'var(--trans)' }}>
-          {translation.segments.length} segment{translation.segments.length === 1 ? '' : 's'}
-        </span>
-        <button
-          type="button"
-          onClick={() => setFollowPlayhead((value) => !value)}
-          className="translation-follow-toggle"
-          aria-pressed={followPlayhead}
-          title={followPlayhead ? 'Stop auto-following playback' : 'Follow active translation during playback'}
-        >
-          {followPlayhead ? 'Following' : 'Follow off'}
-        </button>
+    <section className="result-section translation-section" aria-labelledby="translation-heading">
+      <div className="section-heading">
+        <Languages aria-hidden="true" />
+        <div>
+          <h2 id="translation-heading">English translation</h2>
+          <p>{segments.length > 0 ? `${segments.length} translated section${segments.length === 1 ? '' : 's'}` : 'No usable translation was returned.'}</p>
+        </div>
+        {audioAvailable && segments.length > 0 && <button type="button" onClick={() => setFollowPlayhead((value) => !value)} className="compact-toggle" aria-pressed={followPlayhead}>{followPlayhead ? 'Following audio' : 'Follow off'}</button>}
       </div>
 
-      <div className="overflow-y-auto space-y-1.5 leading-relaxed">
-        {translation.segments.map((seg) => {
-          const isActive = currentTime >= seg.start && currentTime <= seg.end;
-          return (
-            <p
-              key={seg.id}
-              ref={isActive ? activeRef : undefined}
-              onClick={() => onSeek(seg.start)}
-              className="cursor-pointer px-2.5 py-2 rounded-lg text-sm transition-all duration-200"
-              style={
-                isActive
-                  ? {
-                      background: 'var(--trans-bg)',
-                      color: 'var(--trans-text)',
-                      border: '1px solid var(--trans-border)',
-                    }
-                  : {
-                      color: 'var(--text-muted)',
-                      border: '1px solid transparent',
-                    }
-              }
-              title={`[${seg.start.toFixed(1)}s – ${seg.end.toFixed(1)}s] Click to seek`}
-            >
-              {seg.text}
-            </p>
-          );
-        })}
-      </div>
-    </div>
+      {segments.length === 0 ? (
+        <div className="empty-state empty-state--compact"><p>The Spanish transcript is still available. Re-run the file after checking model files, storage, and connectivity.</p></div>
+      ) : (
+        <div className="translation-list">
+          {segments.map((segment) => {
+            const active = audioAvailable && currentTime >= segment.start && currentTime <= segment.end;
+            return audioAvailable ? (
+              <button key={segment.id} ref={active ? activeRef : undefined} type="button" onClick={() => onSeek(segment.start)} className="translation-segment" data-active={active} aria-label={`Seek to ${segment.start.toFixed(1)} seconds: ${segment.text}`}>{segment.text}</button>
+            ) : <p key={segment.id} className="translation-segment translation-segment--static">{segment.text}</p>;
+          })}
+        </div>
+      )}
+    </section>
   );
 }

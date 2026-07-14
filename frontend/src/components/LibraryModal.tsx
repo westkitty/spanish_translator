@@ -1,63 +1,119 @@
-import { FolderOpen, Trash2, Clock, FileAudio } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { AlertTriangle, Clock, FileAudio, FileText, FolderOpen, Loader2, Trash2 } from 'lucide-react';
 import { Modal } from './Modal';
 import type { ProjectMeta } from '../lib/db';
+import type { ProjectStoreError, ProjectStoreStatus } from '../hooks/useProjects';
 
 interface LibraryModalProps {
   open: boolean;
   onClose: () => void;
   projects: ProjectMeta[];
-  onOpenProject: (id: string) => void;
-  onDeleteProject: (id: string) => void;
+  status: ProjectStoreStatus;
+  error: ProjectStoreError | null;
+  onRetry: () => void;
+  onOpenProject: (id: string) => Promise<void> | void;
+  onDeleteProject: (id: string) => Promise<void> | void;
 }
 
 function relativeDate(ms: number): string {
-  const d = new Date(ms);
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) +
-    ' · ' +
-    d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const date = new Date(ms);
+  return `${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · ${date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
 }
 
-function fmtDuration(sec: number): string {
-  const m = Math.floor(sec / 60);
-  const s = Math.round(sec % 60);
-  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+function duration(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const remainder = Math.round(seconds % 60);
+  return minutes > 0 ? `${minutes}m ${remainder}s` : `${remainder}s`;
 }
 
-export function LibraryModal({ open, onClose, projects, onOpenProject, onDeleteProject }: LibraryModalProps) {
+export function LibraryModal({ open, onClose, projects, status, error, onRetry, onOpenProject, onDeleteProject }: LibraryModalProps) {
+  const [pendingDelete, setPendingDelete] = useState<ProjectMeta | null>(null);
+  const [openingId, setOpeningId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const cancelDeleteRef = useRef<HTMLButtonElement | null>(null);
+  const loading = status === 'loading';
+  const busy = openingId !== null || deletingId !== null || pendingDelete !== null;
+
+  useEffect(() => {
+    if (!open) {
+      setPendingDelete(null);
+      setOpeningId(null);
+      setDeletingId(null);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (pendingDelete) cancelDeleteRef.current?.focus();
+  }, [pendingDelete]);
+
+  const openProject = async (id: string) => {
+    setOpeningId(id);
+    try { await onOpenProject(id); } finally { setOpeningId(null); }
+  };
+
+  const deleteSelectedProject = async () => {
+    if (!pendingDelete) return;
+    setDeletingId(pendingDelete.id);
+    try {
+      await onDeleteProject(pendingDelete.id);
+      setPendingDelete(null);
+    } catch {
+      // The store exposes the actionable error above the list.
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const errorTitle = error?.action === 'load' ? 'Library unavailable'
+    : error?.action === 'delete' ? 'Deletion failed'
+    : error?.action === 'open' ? 'Transcript could not be opened'
+    : 'Storage problem';
+
   return (
-    <Modal open={open} onClose={onClose} title="Your saved transcripts" labelledBy="library-title">
-      {projects.length === 0 ? (
-        <div className="text-center py-8 text-slate-400">
-          <FolderOpen className="w-10 h-10 mx-auto mb-3 text-slate-600" />
-          <p className="text-sm font-semibold text-slate-300">Nothing saved yet</p>
-          <p className="text-[11px] mt-1">Transcribe a file and it’ll be saved here automatically.</p>
+    <Modal open={open} onClose={onClose} title="Saved transcripts" labelledBy="library-title">
+      {error && (
+        <div className="state-message state-message--error" role="alert">
+          <AlertTriangle aria-hidden="true" />
+          <div>
+            <strong>{errorTitle}</strong>
+            <p>{error.message}</p>
+            {error.action === 'load' && <button type="button" onClick={onRetry} className="secondary-button">Try again</button>}
+          </div>
         </div>
+      )}
+
+      {loading && projects.length === 0 ? (
+        <div className="empty-state" role="status"><Loader2 className="animate-spin" aria-hidden="true" /><p>Loading saved transcripts…</p></div>
+      ) : projects.length === 0 && !error ? (
+        <div className="empty-state"><FolderOpen aria-hidden="true" /><h3>Nothing saved yet</h3><p>Completed transcripts appear here after they are saved on this device.</p></div>
       ) : (
-        <div className="space-y-2">
-          {projects.map((p) => (
-            <div key={p.id} className="glass rounded-xl p-3 flex items-center gap-3">
-              <div className="shrink-0 w-9 h-9 rounded-lg bg-sky-500/15 border border-sky-400/20 flex items-center justify-center">
-                <FileAudio className="w-4 h-4 text-sky-300" />
-              </div>
-              <button
-                onClick={() => onOpenProject(p.id)}
-                className="flex-grow text-left overflow-hidden cursor-pointer"
-              >
-                <p className="text-[13px] font-semibold text-slate-100 truncate">{p.name}</p>
-                <p className="text-[11px] font-mono mt-0.5 flex items-center gap-1.5" style={{ color: 'var(--text-subtle)' }}>
-                  <Clock className="w-3 h-3" /> {relativeDate(p.updatedAt)} · {fmtDuration(p.durationSec)}
-                </p>
+        <div className="library-list" aria-busy={openingId !== null || deletingId !== null}>
+          {projects.map((project) => (
+            <div key={project.id} className="library-row">
+              {project.hasAudio ? <FileAudio aria-hidden="true" /> : <FileText aria-hidden="true" />}
+              <button type="button" onClick={() => void openProject(project.id)} disabled={busy} className="library-row__open">
+                <strong>{openingId === project.id ? 'Opening…' : project.name}</strong>
+                <span><Clock aria-hidden="true" /> {relativeDate(project.updatedAt)} · {duration(project.durationSec)} · {project.hasAudio ? 'Audio retained' : 'Transcript only'}</span>
               </button>
-              <button
-                onClick={() => onDeleteProject(p.id)}
-                aria-label={`Delete ${p.name}`}
-                className="shrink-0 p-1.5 rounded-lg text-slate-500 hover:text-rose-300 hover:bg-rose-500/10 transition-colors cursor-pointer"
-              >
-                <Trash2 className="w-4 h-4" />
+              <button type="button" onClick={() => setPendingDelete(project)} disabled={busy} aria-label={`Delete ${project.name}`} className="icon-button icon-button--danger">
+                <Trash2 aria-hidden="true" />
               </button>
             </div>
           ))}
         </div>
+      )}
+
+      {pendingDelete && (
+        <section className="delete-confirmation" role="region" aria-labelledby="delete-project-title" aria-live="assertive">
+          <h3 id="delete-project-title">Delete “{pendingDelete.name}”?</h3>
+          <p>The transcript, translation, edits, and any retained source audio will be permanently removed.</p>
+          <div className="dialog-actions">
+            <button ref={cancelDeleteRef} type="button" onClick={() => setPendingDelete(null)} disabled={deletingId !== null} className="secondary-button">Cancel</button>
+            <button type="button" onClick={() => void deleteSelectedProject()} disabled={deletingId !== null} className="danger-button">
+              {deletingId ? 'Deleting…' : 'Delete permanently'}
+            </button>
+          </div>
+        </section>
       )}
     </Modal>
   );
