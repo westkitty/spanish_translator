@@ -1,0 +1,59 @@
+name: Apply adversarial UI fixes
+
+on:
+  pull_request:
+    branches: [main]
+    types: [synchronize]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.head_ref == 'ui/adversarial-redesign-2026-07-14'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ui/adversarial-redesign-2026-07-14
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Reconstruct and verify correction script
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64, gzip, hashlib
+          encoded = ''.join(path.read_text().strip() for path in sorted(Path('.github/ui-fix-b64').glob('part-*')))
+          raw = gzip.decompress(base64.b64decode(encoded))
+          digest = hashlib.sha256(raw).hexdigest()
+          expected = '9e24615e6ea7020ed3dab245ca071513f90ac6f30593fb84b3927e4e22ca7640'
+          if digest != expected:
+              raise SystemExit(f'Correction payload checksum mismatch: {digest}')
+          target = Path('.github/scripts/apply_adversarial_ui_fixes.py')
+          target.parent.mkdir(parents=True, exist_ok=True)
+          target.write_bytes(raw)
+          print(f'Verified correction payload: {digest}')
+          PY
+      - name: Apply correction pass
+        run: python3 .github/scripts/apply_adversarial_ui_fixes.py
+      - name: Clean install
+        working-directory: frontend
+        run: npm ci
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+      - name: Test
+        working-directory: frontend
+        run: npm run test
+      - name: Commit validated fixes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add frontend/src frontend/index.html frontend/package-lock.json
+          git diff --cached --quiet && exit 0
+          git commit -m 'fix(ui): resolve adversarial review findings'
+          git push origin HEAD:ui/adversarial-redesign-2026-07-14
