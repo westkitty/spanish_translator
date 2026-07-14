@@ -27,7 +27,12 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import base64, gzip, hashlib
-          encoded = ''.join(path.read_text().strip() for path in sorted(Path('.github/sweep-fix-b64').glob('part-*')))
+          parts = sorted(Path('.github/sweep-fix-b64').glob('part-*'))
+          for path in parts:
+              data = path.read_bytes()
+              print(path.name, len(data), hashlib.sha256(data).hexdigest())
+          encoded = b''.join(path.read_bytes().strip() for path in parts)
+          print('encoded', len(encoded), hashlib.sha256(encoded).hexdigest())
           raw = gzip.decompress(base64.b64decode(encoded))
           digest = hashlib.sha256(raw).hexdigest()
           expected = '915c9f25b29a6c8cc730956f4546a317dacdf4a070da506a15de7f14107122cb'
