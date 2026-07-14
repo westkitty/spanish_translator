@@ -15,6 +15,14 @@ jobs:
         with:
           ref: feature/product-foundation-upgrade-2026-07-14
           fetch-depth: 0
+      - name: Mark validation start
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          printf 'started %s\n' "$(date -u +%FT%TZ)" > .github/product-validation-started.txt
+          git add .github/product-validation-started.txt
+          git commit -m 'chore: mark product validation start'
+          git push origin HEAD:feature/product-foundation-upgrade-2026-07-14
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -56,8 +64,6 @@ jobs:
         run: npm run test:e2e
       - name: Commit validated implementation
         run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add frontend docs .github/workflows/product-foundation-ci.yml .github/workflows/release-preflight.yml
           git diff --cached --quiet && exit 0
           git commit -m 'feat: implement product foundation upgrade'
