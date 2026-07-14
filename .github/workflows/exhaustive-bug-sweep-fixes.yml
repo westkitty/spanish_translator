@@ -22,6 +22,11 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - name: Upload raw payload parts
+        uses: actions/upload-artifact@v4
+        with:
+          name: exhaustive-sweep-raw-payload-parts
+          path: .github/sweep-fix-b64
       - name: Reconstruct and verify repair script
         id: reconstruct
         continue-on-error: true
