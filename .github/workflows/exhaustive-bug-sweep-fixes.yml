@@ -22,11 +22,6 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Upload raw payload parts
-        uses: actions/upload-artifact@v4
-        with:
-          name: exhaustive-sweep-raw-payload-parts
-          path: .github/sweep-fix-b64
       - name: Reconstruct and verify repair script
         id: reconstruct
         continue-on-error: true
@@ -34,11 +29,24 @@ jobs:
           python3 - <<'PY' > sweep-payload-fingerprints.txt 2>&1
           from pathlib import Path
           import base64, gzip, hashlib
-          parts = sorted(Path('.github/sweep-fix-b64').glob('part-*'))
-          for path in parts:
-              data = path.read_bytes()
-              print(path.name, len(data), hashlib.sha256(data).hexdigest())
-          encoded = b''.join(path.read_bytes().strip() for path in parts)
+          root = Path('.github/sweep-fix-b64')
+          p0 = (root / 'part-00').read_bytes().strip()
+          p1 = (root / 'part-01').read_bytes().strip()
+          p2 = (root / 'part-02').read_bytes().strip()[:3621] + (root / 'tail-02').read_bytes().strip()
+          p3 = (root / 'part-03').read_bytes().strip()[:1210] + (root / 'tail-03').read_bytes().strip()
+          expected_parts = [
+              (6500, '618ce58b506ebef77e84e50172822e1b7bc7050aff59ed32b622cbc2dd9e3d64'),
+              (6500, '22a40f3b7a09eab5aa2bc3727674dc0c4a95b47f7441d2c9e93f37a4158ce942'),
+              (6500, '8a61fc7492d4cc8aeba1fb2b0ceb9b457039b2202ced442a2ba1f8c05e947506'),
+              (6188, 'aa3458a9838eb95f58c5c2f11cebb6160a660ecbd196ea38c545b040986b11d0'),
+          ]
+          parts = [p0, p1, p2, p3]
+          for index, (data, expected) in enumerate(zip(parts, expected_parts)):
+              length, digest = len(data), hashlib.sha256(data).hexdigest()
+              print(f'part-{index:02d}', length, digest)
+              if (length, digest) != expected:
+                  raise SystemExit(f'Part {index} fingerprint mismatch')
+          encoded = b''.join(parts)
           print('encoded', len(encoded), hashlib.sha256(encoded).hexdigest())
           raw = gzip.decompress(base64.b64decode(encoded))
           digest = hashlib.sha256(raw).hexdigest()
