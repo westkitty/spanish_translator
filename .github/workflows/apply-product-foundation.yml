@@ -1,4 +1,4 @@
-name: Diagnose product foundation upgrade
+name: Diagnose product foundation source application
 
 on:
   push:
@@ -15,12 +15,7 @@ jobs:
         with:
           ref: feature/product-foundation-upgrade-2026-07-14
           fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - name: Apply and validate with durable diagnostics
+      - name: Apply source packet and preserve diagnostics
         shell: bash
         run: |
           set +e
@@ -41,31 +36,22 @@ jobs:
           PY
             python3 -m py_compile .github/apply_product_upgrade.py
             python3 .github/apply_product_upgrade.py
-            cd frontend
-            npm install --package-lock-only --ignore-scripts
-            npm ci
-            npm run build
-            npm run test
-            npx playwright install --with-deps chromium
-            npm run test:e2e
+            git diff --check
           } > "$LOG" 2>&1
           code=$?
-          cd "$GITHUB_WORKSPACE"
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           if [ "$code" -eq 0 ]; then
-            printf '\nRESULT=SUCCESS\n' >> "$LOG"
-            mkdir -p .github
+            printf '\nRESULT=SOURCE_APPLIED\n' >> "$LOG"
             cp "$LOG" .github/product-validation.log
             git add frontend docs .github/workflows/product-foundation-ci.yml .github/workflows/release-preflight.yml .github/product-validation.log
-            git commit -m 'feat: implement and validate product foundation upgrade'
+            git commit -m 'feat: apply product foundation source upgrade'
           else
             printf '\nRESULT=FAILURE exit=%s\n' "$code" >> "$LOG"
             cp "$LOG" /tmp/product-validation-preserved.log
             git reset --hard HEAD
-            mkdir -p .github
             cp /tmp/product-validation-preserved.log .github/product-validation.log
             git add .github/product-validation.log
-            git commit -m 'chore: record product validation failure'
+            git commit -m 'chore: record product source application failure'
           fi
           git push origin HEAD:feature/product-foundation-upgrade-2026-07-14
