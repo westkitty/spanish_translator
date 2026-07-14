@@ -1,4 +1,4 @@
-name: Apply product foundation upgrade
+name: Diagnose product foundation upgrade
 
 on:
   push:
@@ -8,63 +8,64 @@ permissions:
   contents: write
 
 jobs:
-  apply:
+  diagnose:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
           ref: feature/product-foundation-upgrade-2026-07-14
           fetch-depth: 0
-      - name: Mark validation start
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          printf 'started %s\n' "$(date -u +%FT%TZ)" > .github/product-validation-started.txt
-          git add .github/product-validation-started.txt
-          git commit -m 'chore: mark product validation start'
-          git push origin HEAD:feature/product-foundation-upgrade-2026-07-14
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Reconstruct and verify implementation packet
+      - name: Apply and validate with durable diagnostics
+        shell: bash
         run: |
-          cat .github/product-upgrade-parts/part-* > .github/apply_product_upgrade.py
-          python3 - <<'PY'
+          set +e
+          LOG=/tmp/product-validation.log
+          : > "$LOG"
+          {
+            echo "started $(date -u +%FT%TZ)"
+            cat .github/product-upgrade-parts/part-* > .github/apply_product_upgrade.py
+            python3 - <<'PY'
           from pathlib import Path
           import hashlib
           path = Path('.github/apply_product_upgrade.py')
           digest = hashlib.sha256(path.read_bytes()).hexdigest()
           expected = 'ab49d7883e3ed292fcd1d69ed086906188acadc48794c6795377c218645e1084'
+          print('packet', len(path.read_bytes()), digest)
           if digest != expected:
               raise SystemExit(f'Implementation checksum mismatch: {digest}')
-          print(f'Verified implementation packet: {digest}')
           PY
-          python3 -m py_compile .github/apply_product_upgrade.py
-      - name: Apply implementation
-        run: python3 .github/apply_product_upgrade.py
-      - name: Refresh lockfile
-        working-directory: frontend
-        run: npm install --package-lock-only --ignore-scripts
-      - name: Clean install
-        working-directory: frontend
-        run: npm ci
-      - name: Build
-        working-directory: frontend
-        run: npm run build
-      - name: Unit tests
-        working-directory: frontend
-        run: npm run test
-      - name: Install Chromium
-        working-directory: frontend
-        run: npx playwright install --with-deps chromium
-      - name: Browser end-to-end tests
-        working-directory: frontend
-        run: npm run test:e2e
-      - name: Commit validated implementation
-        run: |
-          git add frontend docs .github/workflows/product-foundation-ci.yml .github/workflows/release-preflight.yml
-          git diff --cached --quiet && exit 0
-          git commit -m 'feat: implement product foundation upgrade'
+            python3 -m py_compile .github/apply_product_upgrade.py
+            python3 .github/apply_product_upgrade.py
+            cd frontend
+            npm install --package-lock-only --ignore-scripts
+            npm ci
+            npm run build
+            npm run test
+            npx playwright install --with-deps chromium
+            npm run test:e2e
+          } > "$LOG" 2>&1
+          code=$?
+          cd "$GITHUB_WORKSPACE"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if [ "$code" -eq 0 ]; then
+            printf '\nRESULT=SUCCESS\n' >> "$LOG"
+            mkdir -p .github
+            cp "$LOG" .github/product-validation.log
+            git add frontend docs .github/workflows/product-foundation-ci.yml .github/workflows/release-preflight.yml .github/product-validation.log
+            git commit -m 'feat: implement and validate product foundation upgrade'
+          else
+            printf '\nRESULT=FAILURE exit=%s\n' "$code" >> "$LOG"
+            cp "$LOG" /tmp/product-validation-preserved.log
+            git reset --hard HEAD
+            mkdir -p .github
+            cp /tmp/product-validation-preserved.log .github/product-validation.log
+            git add .github/product-validation.log
+            git commit -m 'chore: record product validation failure'
+          fi
           git push origin HEAD:feature/product-foundation-upgrade-2026-07-14
