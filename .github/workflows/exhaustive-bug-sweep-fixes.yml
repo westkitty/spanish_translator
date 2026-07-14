@@ -23,8 +23,10 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Reconstruct and verify repair script
+        id: reconstruct
+        continue-on-error: true
         run: |
-          python3 - <<'PY'
+          python3 - <<'PY' > sweep-payload-fingerprints.txt 2>&1
           from pathlib import Path
           import base64, gzip, hashlib
           parts = sorted(Path('.github/sweep-fix-b64').glob('part-*'))
@@ -35,6 +37,7 @@ jobs:
           print('encoded', len(encoded), hashlib.sha256(encoded).hexdigest())
           raw = gzip.decompress(base64.b64decode(encoded))
           digest = hashlib.sha256(raw).hexdigest()
+          print('decoded', len(raw), digest)
           expected = '915c9f25b29a6c8cc730956f4546a317dacdf4a070da506a15de7f14107122cb'
           if digest != expected:
               raise SystemExit(f'Repair payload checksum mismatch: {digest}')
@@ -43,6 +46,17 @@ jobs:
           target.write_bytes(raw)
           print(f'Verified repair payload: {digest}')
           PY
+      - name: Upload payload fingerprints
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exhaustive-sweep-payload-fingerprints
+          path: sweep-payload-fingerprints.txt
+      - name: Stop on reconstruction failure
+        if: steps.reconstruct.outcome == 'failure'
+        run: |
+          cat sweep-payload-fingerprints.txt
+          exit 1
       - name: Apply repair pass
         id: apply
         continue-on-error: true
