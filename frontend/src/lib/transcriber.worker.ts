@@ -63,22 +63,31 @@ interface Segment {
   end: number;
 }
 
+interface TranslationFailure {
+  source: string;
+  start: number;
+  end: number;
+  message: string;
+}
+
+interface TranslationResult {
+  segments: Segment[];
+  text: string;
+  failures: TranslationFailure[];
+}
+
 // Translate Spanish sentences to English, preserving each sentence's timing.
-//
-// One sentence per call — NOT batched. Batched seq2seq generation runs until the
-// longest sequence in the batch finishes (or max_length), so shorter sentences
-// keep emitting filler tokens that decode as runaway "...."/"????" tails. That
-// made every sentence generate ~max_length tokens: garbage output, ~25× the
-// compute, and enough memory churn to OOM-crash a phone WebView mid-run. Per
-// sentence each sequence stops at its own EOS; we also cap max_new_tokens and
-// block n-gram loops, then sanitize as a last line of defense.
+// A failed sentence remains represented as an empty timed segment, but the
+// failure is returned explicitly so the UI can label the run as partial rather
+// than silently presenting an empty translation as success.
 async function translateSentences(
   sentences: { text: string; start: number; end: number }[]
-): Promise<{ segments: Segment[]; text: string }> {
-  if (sentences.length === 0) return { segments: [], text: '' };
+): Promise<TranslationResult> {
+  if (sentences.length === 0) return { segments: [], text: '', failures: [] };
 
   const translator = await getTranslator();
   const segments: Segment[] = [];
+  const failures: TranslationFailure[] = [];
 
   for (const s of sentences) {
     if (cancelRequested) break;
@@ -95,14 +104,31 @@ async function translateSentences(
       });
       const arr = Array.isArray(output) ? output : [output];
       text = sanitizeTranslation((arr[0]?.translation_text ?? '').trim());
-    } catch {
-      text = '';
+      if (!text) {
+        failures.push({
+          source: s.text,
+          start: s.start,
+          end: s.end,
+          message: 'The translation model returned no text.',
+        });
+      }
+    } catch (err: any) {
+      failures.push({
+        source: s.text,
+        start: s.start,
+        end: s.end,
+        message: err?.message ?? String(err),
+      });
     }
 
     segments.push({ id: `seg-${segments.length}`, text, start: s.start, end: s.end });
   }
 
-  return { segments, text: segments.map((s) => s.text).join(' ') };
+  return {
+    segments,
+    text: segments.map((s) => s.text).filter(Boolean).join(' '),
+    failures,
+  };
 }
 
 interface RunMessage {
@@ -145,20 +171,19 @@ function getPipeline(model: WhisperModel): Promise<any> {
   return p;
 }
 
-
 function toItems(output: any): TimedItem[] {
   if (!output) return [];
-  
+
   const chunks: any[] = output.chunks ?? (Array.isArray(output) ? output : []);
-  
+
   return chunks
     .filter((c) => c && (c.text || c.word))
     .map((c) => {
       const textVal = (c.text ?? c.word ?? '').trim();
-      
+
       let start = 0;
       let end = 0;
-      
+
       if (Array.isArray(c.timestamp)) {
         start = c.timestamp[0] ?? 0;
         end = c.timestamp[1] ?? start;
@@ -166,11 +191,11 @@ function toItems(output: any): TimedItem[] {
         start = c.start;
         end = c.end ?? start;
       }
-      
+
       return {
         text: textVal,
         start: start,
-        end: end
+        end: end,
       };
     })
     .filter((item) => item.text.length > 0);
@@ -225,7 +250,7 @@ self.addEventListener('message', async (event: MessageEvent<IncomingMessage>) =>
 
       // Pass 1 — transcript (Spanish), word-level timestamps.
       self.postMessage({ type: 'status', status: 'transcribing' });
-      let t0 = performance.now();
+      const t0 = performance.now();
       const txOutput: any = await transcriber(slice, {
         language: msg.language,
         task: 'transcribe',
@@ -275,18 +300,26 @@ self.addEventListener('message', async (event: MessageEvent<IncomingMessage>) =>
       start: s.start,
       end: s.end,
     }));
-    const translation = await translateSentences(sentences);
+    const translationResult = await translateSentences(sentences);
 
     if (cancelRequested) {
       self.postMessage({ type: 'cancelled' });
       return;
     }
 
+    const { failures, ...translation } = translationResult;
+    const translationError =
+      failures.length > 0
+        ? `Spanish transcription completed, but ${failures.length} of ${sentences.length} English translation segment${failures.length === 1 ? '' : 's'} failed. The result is partial.`
+        : null;
+
     self.postMessage({
       type: 'result',
       words,
       text: words.map((w) => w.text).join(' '),
       translation,
+      translationError,
+      translationFailures: failures,
     });
   } catch (err: any) {
     self.postMessage({ type: 'error', message: err?.message ?? String(err) });
