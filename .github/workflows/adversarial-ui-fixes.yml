@@ -38,6 +38,17 @@ jobs:
           target.write_bytes(raw)
           print(f'Verified correction payload: {digest}')
           PY
+      - name: Adapt match targets to current PR source
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.github/scripts/apply_adversarial_ui_fixes.py')
+          text = path.read_text()
+          text = text.replace('result-pane result-pane--spanish', 'result-pane flex flex-col gap-3.5 min-w-0')
+          text = text.replace('result-pane result-pane--english', 'result-pane translation-pane')
+          text = text.replace("# Pass audio availability to result readers and hide audio-only player/tools.\nreplace('frontend/src/App.tsx', '              <div className=\"player-card glass rounded-2xl p-4 space-y-3\">', '              {sourceAudioAvailable ? (\\n              <div className=\"player-card glass rounded-2xl p-4 space-y-3\">', 1)\n# Close player conditional immediately before the corrections block.\nreplace('frontend/src/App.tsx', \"              {/* \\\"Remember corrections\\\" inline link */}\", \"              ) : (\\n                <div className=\\\"state-message\\\" role=\\\"status\\\"><Info aria-hidden=\\\"true\\\" /><div><strong>Transcript-only project</strong><p>The source audio was not retained, so playback, seeking, clips, looping, and reprocessing are unavailable.</p></div></div>\\n              )}\\n\\n              {/* \\\"Remember corrections\\\" inline link */}\", 1)", "# Pass audio availability to result readers and disable audio-only tools for transcript-only projects.\nreplace('frontend/src/App.tsx', '              {file && file.size > 0 ? (', '              {sourceAudioAvailable ? (', 1)\nreplace('frontend/src/App.tsx', '<div className=\"state-message\"><Info aria-hidden=\"true\" /><div><strong>Transcript-only project</strong><p>The source audio was not retained, so playback and clip tools are unavailable.</p></div></div>', '<div className=\"state-message\" role=\"status\"><Info aria-hidden=\"true\" /><div><strong>Transcript-only project</strong><p>The source audio was not retained, so playback, seeking, clips, looping, and reprocessing are unavailable.</p></div></div>', 1)")
+          path.write_text(text)
+          PY
       - name: Apply correction pass
         id: apply
         continue-on-error: true
