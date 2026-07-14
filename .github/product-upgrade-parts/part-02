@@ -1,0 +1,71 @@
+ replacements. Disabled rules are not applied to future runs.</p></div></div>
+        {rules.length === 0 ? <div className="empty-state empty-state--compact"><p>No managed corrections yet.</p></div> : <div className="dictionary-list">{rules.map((rule) => <div key={rule.id} className="dictionary-row">
+          <label><input type="checkbox" checked={rule.enabled} onChange={(event) => commitRules(rules.map((item) => item.id === rule.id ? { ...item, enabled: event.target.checked } : item))} /><span><strong>{rule.from}</strong> → {rule.to}<small>{rule.scope === 'global' ? 'All projects' : 'One project'}</small></span></label>
+          <button type="button" className="icon-button icon-button--danger" aria-label={`Remove correction ${rule.from}`} onClick={() => commitRules(rules.filter((item) => item.id !== rule.id))}><Trash2 aria-hidden="true" /></button>
+        </div>)}</div>}
+      </section>}
+
+      {tab === 'diagnostics' && <section className="tool-section">
+        <div className="section-heading"><Download aria-hidden="true" /><div><h2>Diagnostics export</h2><p>Creates a local JSON report with app, runtime, cache, and storage metadata. Transcript text and audio are excluded.</p></div></div>
+        <button type="button" className="primary-button" onClick={() => void buildDiagnostics(projects).then((data) => saveTextFile(`dexterpreter-diagnostics-${Date.now()}.json`, 'application/json', JSON.stringify(data, null, 2)))}><Download aria-hidden="true" />Save diagnostics</button>
+      </section>}
+    </Modal>
+  );
+}
+''')
+
+write('frontend/src/lib/workflowState.test.ts', r'''import { describe, expect, it } from 'vitest';
+import { deriveWorkflowCapabilities } from './workflowState';
+
+describe('deriveWorkflowCapabilities', () => {
+  it('prevents impossible audio actions for transcript-only projects', () => {
+    const state = deriveWorkflowCapabilities({ hasFile: true, hasAudio: false, status: 'done', hasTranscript: true, hasTranslation: true });
+    expect(state.canPlay).toBe(false);
+    expect(state.canEdit).toBe(true);
+    expect(state.canExportText).toBe(true);
+  });
+  it('offers translation recovery when output is incomplete', () => {
+    expect(deriveWorkflowCapabilities({ hasFile: true, hasAudio: true, status: 'done', hasTranscript: true, hasTranslation: true, translationWarning: 'partial' }).canRetryTranslation).toBe(true);
+  });
+});
+''')
+
+write('frontend/src/lib/projectBundle.test.ts', r'''import { describe, expect, it } from 'vitest';
+import { exportProjectBundle, importProjectBundle } from './projectBundle';
+
+const project = { id: 'p1', name: 'Demo', createdAt: 1, updatedAt: 2, model: 'base', durationSec: 3, audioBlob: new Blob(['abc'], { type: 'audio/wav' }), words: [{ id: 'w', text: 'hola', start: 0, end: 1 }], translation: null };
+
+describe('project bundles', () => {
+  it('round trips optional retained audio', async () => {
+    const text = await exportProjectBundle(project, true);
+    const restored = importProjectBundle(text);
+    expect(restored.words[0].text).toBe('hola');
+    expect(restored.audioBlob.size).toBe(3);
+  });
+  it('supports transcript-only exports', async () => {
+    const restored = importProjectBundle(await exportProjectBundle(project, false));
+    expect(restored.audioBlob.size).toBe(0);
+  });
+});
+''')
+
+# DB metadata expansion
+replace('frontend/src/lib/db.ts', "  hasAudio: boolean;\n}", "  hasAudio: boolean;\n  translationState: 'complete' | 'incomplete' | 'missing';\n  lastOpenedAt?: number;\n}")
+replace('frontend/src/lib/db.ts', "    hasAudio: project.audioBlob.size > 0,\n", "    hasAudio: project.audioBlob.size > 0,\n    translationState: project.translation?.warning ? 'incomplete' : project.translation?.text ? 'complete' : 'missing',\n    lastOpenedAt: project.lastOpenedAt,\n")
+replace('frontend/src/lib/db.ts', "  peaks?: number[];\n}", "  peaks?: number[];\n  lastOpenedAt?: number;\n}")
+replace('frontend/src/lib/db.ts', "const VERSION = 2;", "const VERSION = 3;")
+
+# useProjects touch lastOpened
+replace('frontend/src/hooks/useProjects.ts', "      return await getProject(id);", "      const project = await getProject(id);\n      if (project) {\n        project.lastOpenedAt = Date.now();\n        await putProject(project);\n        await loadProjects();\n      }\n      return project;")
+
+# Worker checkpoint and translation retry
+replace('frontend/src/lib/transcriber.worker.ts', "interface CancelMessage {\n  type: 'cancel';\n}\ntype IncomingMessage = RunMessage | CancelMessage;", "interface CancelMessage { type: 'cancel'; }\ninterface TranslateSegmentsMessage { type: 'translate-segments'; segments: { id: string; text: string; start: number; end: number }[]; }\ntype IncomingMessage = RunMessage | CancelMessage | TranslateSegmentsMessage;")
+replace('frontend/src/lib/transcriber.worker.ts', "  offsetSec?: number;\n}", "  offsetSec?: number;\n  resumeWindows?: TimedItem[][];\n  checkpointKey?: string;\n}")
+replace('frontend/src/lib/transcriber.worker.ts', "  if (msg.type !== 'run') return;", "  if (msg.type === 'translate-segments') {\n    try { self.postMessage({ type: 'translation-result', translation: await translateSentences(msg.segments) }); }\n    catch (error: any) { self.postMessage({ type: 'translation-error', message: error?.message ?? String(error) }); }\n    return;\n  }\n  if (msg.type !== 'run') return;")
+replace('frontend/src/lib/transcriber.worker.ts', "    const txPerWindow: TimedItem[][] = [];\n\n    for (const w of windows) {", "    const txPerWindow: TimedItem[][] = msg.resumeWindows ? [...msg.resumeWindows] : [];\n\n    for (const w of windows.slice(txPerWindow.length)) {")
+replace('frontend/src/lib/transcriber.worker.ts', "      txPerWindow.push(toItems(txOutput));\n      self.postMessage({", "      txPerWindow.push(toItems(txOutput));\n      self.postMessage({ type: 'checkpoint', key: msg.checkpointKey, completedWindows: txPerWindow });\n      self.postMessage({")
+
+# Hook checkpoint integration and retryTranslation
+replace('frontend/src/hooks/useTranscriber.ts', "import type { WhisperModel } from '../lib/models';", "import type { WhisperModel } from '../lib/models';\nimport { checkpointKey, clearCheckpoint, loadCheckpoint, saveCheckpoint } from '../lib/checkpoints';")
+replace('frontend/src/hooks/useTranscriber.ts', "    (samples: Float32Array, opts: RunOptions, mode: RunMode, offsetSec: number) => {", "    (samples: Float32Array, opts: RunOptions, mode: RunMode, offsetSec: number, checkpoint?: { key: string; file: File; completedWindows: CaptionWord[][] }) => {")
+replace('frontend/src/hooks/useTranscriber.ts', "          case 'result': {", "          case 'checkpoint':\n            if (checkpoint && msg.key === checkpoint.key) void saveCheckpoint({ key: checkpoint.key, fileName: checkpoint.file.name, fileSize: checkpoint.file.size, lastModified: checkpoint.file.lastModified, model: opts.model, highAccuracy: Boolean(opts.highAccuracy), completedWindows: msg.completedWindows, updatedAt: Date.now() });\n            break","encoding":"utf-8"}
