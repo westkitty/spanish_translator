@@ -1,7 +1,7 @@
 name: Apply product foundation upgrade
 
 on:
-  pull_request:
+  pull_request_target:
     branches: [ui/adversarial-redesign-2026-07-14]
     types: [synchronize]
 
@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   apply:
-    if: github.head_ref == 'feature/product-foundation-upgrade-2026-07-14'
+    if: github.event.pull_request.head.ref == 'feature/product-foundation-upgrade-2026-07-14'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
