@@ -1,15 +1,14 @@
 name: Apply product foundation upgrade
 
 on:
-  pull_request_target:
-    types: [synchronize]
+  push:
+    branches: [main]
 
 permissions:
   contents: write
 
 jobs:
   apply:
-    if: github.event.pull_request.number == 21 && github.event.pull_request.head.ref == 'feature/product-foundation-upgrade-2026-07-14'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -35,18 +34,25 @@ jobs:
           print(f'Verified implementation packet: {digest}')
           PY
           python3 -m py_compile .github/apply_product_upgrade.py
-      - run: python3 .github/apply_product_upgrade.py
-      - working-directory: frontend
+      - name: Apply implementation
+        run: python3 .github/apply_product_upgrade.py
+      - name: Refresh lockfile
+        working-directory: frontend
         run: npm install --package-lock-only --ignore-scripts
-      - working-directory: frontend
+      - name: Clean install
+        working-directory: frontend
         run: npm ci
-      - working-directory: frontend
+      - name: Build
+        working-directory: frontend
         run: npm run build
-      - working-directory: frontend
+      - name: Unit tests
+        working-directory: frontend
         run: npm run test
-      - working-directory: frontend
+      - name: Install Chromium
+        working-directory: frontend
         run: npx playwright install --with-deps chromium
-      - working-directory: frontend
+      - name: Browser end-to-end tests
+        working-directory: frontend
         run: npm run test:e2e
       - name: Commit validated implementation
         run: |
