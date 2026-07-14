@@ -67,6 +67,20 @@ jobs:
         run: |
           cat sweep-payload-fingerprints.txt
           exit 1
+      - name: Correct compiler-discovered migration event access
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.github/scripts/apply_sweep_fixes.py')
+          text = path.read_text()
+          old = "request.onupgradeneeded = () => {"
+          new = "request.onupgradeneeded = (event) => {"
+          if old not in text:
+              raise SystemExit('Expected upgrade handler was not found')
+          text = text.replace(old, new, 1)
+          text = text.replace('if (request.oldVersion < 2) {', 'if (event.oldVersion < 2) {', 1)
+          path.write_text(text)
+          PY
       - name: Apply repair pass
         id: apply
         continue-on-error: true
