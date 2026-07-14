@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { decodeAudioFile } from '../lib/audio';
 import { EtaEstimator } from '../lib/eta';
 import { replaceTimedRange, type TimedRange } from '../lib/timeline';
-import { parseGlossary, applyGlossaryToWords, applyGlossaryToText } from '../lib/glossary';
+import { parseGlossary, applyGlossaryToWords } from '../lib/glossary';
 import type { CaptionWord } from '../components/CaptionEditor';
 import type { WhisperModel } from '../lib/models';
 
@@ -30,6 +30,7 @@ export interface TranslationSegment {
 export interface Translation {
   segments: TranslationSegment[];
   text: string;
+  warning?: string;
 }
 
 export interface RunProgress {
@@ -66,6 +67,8 @@ export function useTranscriber() {
   const captionsRef = useRef<CaptionWord[]>([]);
   const translationRef = useRef<Translation | null>(null);
   const activeModeRef = useRef<RunMode>({ kind: 'full' });
+  const statusRef = useRef<TranscriberStatus>('idle');
+  const runGenerationRef = useRef(0);
 
   const [status, setStatus] = useState<TranscriberStatus>('idle');
   const [modelFiles, setModelFiles] = useState<Record<string, ModelFileProgress>>({});
@@ -77,6 +80,10 @@ export function useTranscriber() {
   useEffect(() => {
     captionsRef.current = captions;
   }, [captions]);
+
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
 
   useEffect(() => {
     translationRef.current = translation;
@@ -102,6 +109,10 @@ export function useTranscriber() {
   const detach = useCallback(() => {
     if (workerRef.current && handlerRef.current) {
       workerRef.current.removeEventListener('message', handlerRef.current);
+    }
+    if (workerRef.current) {
+      workerRef.current.onerror = null;
+      workerRef.current.onmessageerror = null;
     }
     handlerRef.current = null;
   }, []);
@@ -169,13 +180,7 @@ export function useTranscriber() {
             const words = applyGlossaryToWords(msg.words as CaptionWord[], glossaryRules);
             const rawTranslation = (msg.translation as Translation) ?? null;
             const nextTranslation: Translation | null = rawTranslation
-              ? {
-                  segments: rawTranslation.segments.map((s) => ({
-                    ...s,
-                    text: applyGlossaryToText(s.text, glossaryRules),
-                  })),
-                  text: applyGlossaryToText(rawTranslation.text, glossaryRules),
-                }
+              ? { segments: rawTranslation.segments, text: rawTranslation.text, warning: rawTranslation.warning }
               : null;
 
             if (activeModeRef.current.kind === 'region') {
@@ -222,6 +227,13 @@ export function useTranscriber() {
 
       handlerRef.current = handle;
       worker.addEventListener('message', handle);
+      const failWorker = (message: string) => {
+        setError(message);
+        setStatus(activeModeRef.current.kind === 'region' ? 'done' : 'error');
+        detach();
+      };
+      worker.onerror = (event) => { event.preventDefault(); failWorker(`The transcription worker stopped unexpectedly. (${event.message || 'Unknown worker error'})`); };
+      worker.onmessageerror = () => failWorker('The transcription worker returned data the app could not read.');
 
       worker.postMessage(
         {
@@ -241,6 +253,8 @@ export function useTranscriber() {
 
   const run = useCallback(
     async (file: File, opts: RunOptions) => {
+      const generation = ++runGenerationRef.current;
+      activeModeRef.current = { kind: 'full' };
       setError(null);
       setCaptions([]);
       setTranslation(null);
@@ -250,10 +264,12 @@ export function useTranscriber() {
 
       try {
         const samples = await decodeForRun(file);
+        if (generation !== runGenerationRef.current) return;
         postRun(samples.slice(), opts, { kind: 'full' }, 0);
       } catch (err: any) {
+        if (generation !== runGenerationRef.current) return;
         setStatus('error');
-        setError(`That file wouldn't open — try an MP3, WAV, M4A, or OGG. (${err?.message ?? err})`);
+        setError(`That file wouldn't open — try a supported audio format. (${err?.message ?? err})`);
       }
     },
     [decodeForRun, postRun]
@@ -261,6 +277,8 @@ export function useTranscriber() {
 
   const runRegion = useCallback(
     async (file: File, range: TimedRange, opts: RunOptions) => {
+      const generation = ++runGenerationRef.current;
+      activeModeRef.current = { kind: 'region', range };
       setError(null);
       setModelFiles({});
       setProgress(null);
@@ -268,19 +286,19 @@ export function useTranscriber() {
 
       try {
         const samples = await decodeForRun(file);
+        if (generation !== runGenerationRef.current) return;
         const startSec = Math.max(0, Math.min(range.start, range.end));
         const endSec = Math.max(startSec, Math.max(range.start, range.end));
         const startSample = Math.floor(startSec * 16000);
         const endSample = Math.min(samples.length, Math.ceil(endSec * 16000));
-
         if (endSample <= startSample) {
           setError('Select a longer region before re-running it.');
           setStatus('done');
           return;
         }
-
         postRun(samples.slice(startSample, endSample), opts, { kind: 'region', range: { start: startSec, end: endSec } }, startSec);
       } catch (err: any) {
+        if (generation !== runGenerationRef.current) return;
         setStatus('done');
         setError(`That region couldn't be prepared. (${err?.message ?? err})`);
       }
@@ -289,6 +307,12 @@ export function useTranscriber() {
   );
 
   const cancel = useCallback(() => {
+    runGenerationRef.current += 1;
+    if (statusRef.current === 'decoding') {
+      setStatus(activeModeRef.current.kind === 'region' ? 'done' : 'idle');
+      setProgress(null);
+      return;
+    }
     workerRef.current?.postMessage({ type: 'cancel' });
   }, []);
 
@@ -302,6 +326,7 @@ export function useTranscriber() {
   }, []);
 
   const reset = useCallback(() => {
+    runGenerationRef.current += 1;
     setStatus('idle');
     setCaptions([]);
     setTranslation(null);

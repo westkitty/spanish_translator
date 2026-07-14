@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, Clipboard, FileText, Languages } from 'lucide-react';
 import type { CaptionWord } from './CaptionEditor';
 import type { Translation } from '../hooks/useTranscriber';
@@ -15,6 +15,8 @@ interface TranscriptExportProps {
 
 export function CaptionExport({ captions, translation, fileName = 'transcript' }: TranscriptExportProps) {
   const [copied, setCopied] = useState<'spanish' | 'english' | null>(null);
+  const clearCopiedTimerRef = useRef<number | null>(null);
+  useEffect(() => () => { if (clearCopiedTimerRef.current !== null) window.clearTimeout(clearCopiedTimerRef.current); }, []);
   const disabled = captions.length === 0;
   const spanish = formatTranscriptText(captions);
   const english = translation?.text.trim() ?? '';
@@ -27,7 +29,8 @@ export function CaptionExport({ captions, translation, fileName = 'transcript' }
       await navigator.clipboard.writeText(text);
       setCopied(language);
       notify(`Copied ${language} text`, 'success');
-      window.setTimeout(() => setCopied(null), 1800);
+      if (clearCopiedTimerRef.current !== null) window.clearTimeout(clearCopiedTimerRef.current);
+      clearCopiedTimerRef.current = window.setTimeout(() => setCopied(null), 1800);
     } catch {
       notify(`Could not copy ${language} text`, 'error');
     }

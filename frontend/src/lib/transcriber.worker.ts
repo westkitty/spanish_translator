@@ -51,6 +51,9 @@ function getTranslator(): Promise<any> {
       progress_callback: (progress: any) => {
         self.postMessage({ type: 'model-progress', progress });
       },
+    }).catch((error) => {
+      translatorPromise = null;
+      throw error;
     });
   }
   return translatorPromise;
@@ -74,11 +77,13 @@ interface Segment {
 // block n-gram loops, then sanitize as a last line of defense.
 async function translateSentences(
   sentences: { text: string; start: number; end: number }[]
-): Promise<{ segments: Segment[]; text: string }> {
+): Promise<{ segments: Segment[]; text: string; warning?: string }> {
   if (sentences.length === 0) return { segments: [], text: '' };
 
   const translator = await getTranslator();
   const segments: Segment[] = [];
+  let failedSegments = 0;
+  let firstFailure = '';
 
   for (const s of sentences) {
     if (cancelRequested) break;
@@ -95,14 +100,20 @@ async function translateSentences(
       });
       const arr = Array.isArray(output) ? output : [output];
       text = sanitizeTranslation((arr[0]?.translation_text ?? '').trim());
-    } catch {
+    } catch (error: any) {
+      failedSegments += 1;
+      firstFailure ||= error?.message ?? String(error);
       text = '';
     }
 
     segments.push({ id: `seg-${segments.length}`, text, start: s.start, end: s.end });
   }
 
-  return { segments, text: segments.map((s) => s.text).join(' ') };
+  const text = segments.map((segment) => segment.text).filter(Boolean).join(' ');
+  const warning = failedSegments > 0
+    ? `English translation failed for ${failedSegments} of ${sentences.length} sections.${firstFailure ? ` (${firstFailure})` : ''}`
+    : undefined;
+  return { segments, text, warning };
 }
 
 interface RunMessage {
@@ -139,6 +150,9 @@ function getPipeline(model: WhisperModel): Promise<any> {
       progress_callback: (progress: any) => {
         self.postMessage({ type: 'model-progress', progress });
       },
+    }).catch((error) => {
+      pipelines.delete(model);
+      throw error;
     });
     pipelines.set(model, p);
   }
@@ -190,11 +204,13 @@ self.addEventListener('message', async (event: MessageEvent<IncomingMessage>) =>
   try {
     self.postMessage({ type: 'status', status: 'loading-model' });
     const transcriber = await getPipeline(msg.model);
+    if (cancelRequested) { self.postMessage({ type: 'cancelled' }); return; }
 
     // Pre-inference clean-up: DC removal + high-pass (drop sub-80 Hz rumble) +
     // loudness normalization, so quiet/rumbly recordings reach Whisper at the
     // speech level it was trained on. Pure DSP — see audiodsp.ts.
     const audio = preprocessForWhisper(msg.audio, SAMPLE_RATE);
+    if (cancelRequested) { self.postMessage({ type: 'cancelled' }); return; }
 
     // Map the silences once so window handoffs can land between words instead of
     // mid-word (see silenceAwareCuts), and so we know where hallucination is most

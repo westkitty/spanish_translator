@@ -29,6 +29,11 @@ describe('buildSentences', () => {
     expect(sentences[0].text).toBe('¿qué?');
   });
 
+  it('removes tokenization spaces before punctuation', () => {
+    const sentences = buildSentences([w('hola', 0, 0.2), w(',', 0.2, 0.3), w('mundo', 0.3, 0.6), w('!', 0.6, 0.7)], 0.6);
+    expect(sentences[0].text).toBe('¡Hola, mundo!');
+  });
+
   it('returns empty for no words', () => {
     expect(buildSentences([])).toEqual([]);
   });

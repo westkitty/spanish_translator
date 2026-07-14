@@ -210,3 +210,22 @@ button { min-height: 44px; }
   .run-settings__summary { display: none; }
   .section-heading--stackable { flex-direction: column; }
 }
+
+
+.file-drop-zone:focus-within {
+  outline: 3px solid var(--accent-bright);
+  outline-offset: 3px;
+  border-color: var(--accent-bright);
+}
+.state-message--warning {
+  border-color: var(--warn-border);
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+.state-message--warning p { color: var(--text-muted); }
+.sentence-row__clip:disabled { opacity: 0.55; cursor: wait; }
+.welcome-point h3 { font-weight: 800; }
+.find-replace button:disabled { opacity: 0.45; cursor: not-allowed; }
+@media (prefers-reduced-motion: reduce) {
+  .progress-track__indeterminate { animation: none; width: 100%; opacity: 0.45; }
+}

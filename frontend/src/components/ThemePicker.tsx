@@ -61,6 +61,7 @@ export function ThemePicker({ className = '' }: ThemePickerProps) {
         aria-label={`Theme picker. Current theme: ${activeTheme.name}`}
         aria-haspopup="dialog"
         aria-expanded={open}
+        aria-controls="theme-picker-panel"
         className="theme-picker__trigger min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl transition-colors cursor-pointer"
       >
         <Palette className="w-5 h-5" />
@@ -68,6 +69,7 @@ export function ThemePicker({ className = '' }: ThemePickerProps) {
 
       {open && (
         <div
+          id="theme-picker-panel"
           role="dialog"
           aria-label="Choose display theme"
           className="theme-picker__panel glass-strong animate-scale-in"
@@ -77,15 +79,14 @@ export function ThemePicker({ className = '' }: ThemePickerProps) {
             <p className="theme-picker__help">Choose a readable local workspace. Your choice stays on this device.</p>
           </div>
 
-          <div className="theme-picker__options" role="listbox" aria-label="Display themes">
+          <div className="theme-picker__options" role="group" aria-label="Display themes">
             {themes.map((option) => {
               const selected = option.id === theme;
               return (
                 <button
                   key={option.id}
                   type="button"
-                  role="option"
-                  aria-selected={selected}
+                  aria-pressed={selected}
                   onClick={() => chooseTheme(option.id)}
                   className="theme-picker__option"
                 >

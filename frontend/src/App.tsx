@@ -41,6 +41,7 @@ import { saveBlobFile, saveTextFile } from './lib/fileSave';
 import { getStoredFlag, setStoredFlag } from './lib/storage';
 import { availableTiers, defaultModel, type WhisperModel } from './lib/models';
 import { validateAudioFile } from './lib/uiState';
+import { notify } from './lib/toast';
 
 const RESULT_TIP_SEEN_KEY = 'dexterpreter-seen-result-tip';
 
@@ -202,6 +203,8 @@ export default function App() {
     setFileError(null);
     setSourceAudioAvailable(true);
     setResultSaveState('not-started');
+    setResultTab('spanish');
+    setLearnedMsg(null);
     setFile(recorder.file);
     projectBaseRef.current = null;
     setSelectedRange(null);
@@ -221,6 +224,12 @@ export default function App() {
       if (validationError) { e.target.value = ''; return; }
       setSourceAudioAvailable(true);
       setResultSaveState('not-started');
+      setResultTab('spanish');
+      setLearnedMsg(null);
+      pause();
+      clearLoopRange();
+      seek(0);
+      setSrc(null);
       setFile(selected);
       projectBaseRef.current = null;
       setSelectedRange(null);
@@ -236,6 +245,8 @@ export default function App() {
   const handleReset = () => {
     setFile(null);
     setFileError(null);
+    setResultTab('spanish');
+    setLearnedMsg(null);
     setSourceAudioAvailable(false);
     setResultSaveState('not-started');
     projectBaseRef.current = null;
@@ -247,11 +258,15 @@ export default function App() {
     reset();
     clearDecodedAudio();
     recorder.clear();
+    pause();
+    clearLoopRange();
+    seek(0);
     setSrc(null);
   };
 
   const handleStart = () => {
     if (!file || !sourceAudioAvailable) return;
+    setResultSaveState('not-started');
     setSelectedRange(null);
     setSelectRegionMode(false);
     setSilences([]);
@@ -364,11 +379,16 @@ export default function App() {
 
   const handleExportClip = async (sentence: Sentence) => {
     if (!file || !sourceAudioAvailable) return;
-    const baseName = file.name.replace(/\.[^/.]+$/, '');
+    const baseName = file.name.replace(/\.[^/.]+$/, '') || 'audio-clip';
     const clipName = `${baseName}-${Math.round(sentence.start)}-${Math.round(sentence.end)}`;
-    const wav = await extractWavClip(file, sentence.start, sentence.end);
-    await saveBlobFile(`${clipName}.wav`, wav);
-    await saveTextFile(`${clipName}.txt`, 'text/plain;charset=utf-8', `${sentence.text}\n`);
+    try {
+      const wav = await extractWavClip(file, sentence.start, sentence.end);
+      await saveBlobFile(`${clipName}.wav`, wav);
+      await saveTextFile(`${clipName}.txt`, 'text/plain;charset=utf-8', `${sentence.text}\n`);
+      notify(`Saved ${clipName}.wav and transcript text`, 'success');
+    } catch (cause) {
+      notify(`Clip export failed. (${cause instanceof Error ? cause.message : String(cause)})`, 'error');
+    }
   };
 
   const handleSetLoopStart = () => {
@@ -384,6 +404,15 @@ export default function App() {
     if (!p) return;
     pause();
     setSrc(null);
+    seek(0);
+    clearLoopRange();
+    setSelectedRange(null);
+    setSelectRegionMode(false);
+    setSilences([]);
+    setResultTab('spanish');
+    setLearnedMsg(null);
+    setUndoStack([]);
+    setRedoStack([]);
 
     const restored = p.audioBlob.size > 0
       ? new File([p.audioBlob], `${p.name}.audio`, { type: p.audioBlob.type || 'audio/*' })
@@ -415,6 +444,15 @@ export default function App() {
     setShowLibrary(false);
   };
 
+  const handleDeleteProject = async (id: string) => {
+    const deletingCurrent = projectBaseRef.current?.id === id;
+    await remove(id);
+    if (deletingCurrent) {
+      setShowLibrary(false);
+      handleReset();
+    }
+  };
+
   const modelProgress = useMemo(() => {
     const files = Object.values(modelFiles);
     if (files.length === 0) return 0;
@@ -438,6 +476,17 @@ export default function App() {
 
   const formatRange = (range: { start: number; end: number }) =>
     `${formatTimeStr(Math.min(range.start, range.end))} - ${formatTimeStr(Math.max(range.start, range.end))}`;
+
+  const handleResultTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, current: 'spanish' | 'english') => {
+    let next: 'spanish' | 'english' | null = null;
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') next = current === 'spanish' ? 'english' : 'spanish';
+    else if (event.key === 'Home') next = 'spanish';
+    else if (event.key === 'End') next = 'english';
+    if (!next) return;
+    event.preventDefault();
+    setResultTab(next);
+    window.requestAnimationFrame(() => document.getElementById(`${next}-result-tab`)?.focus());
+  };
 
   // Wave 2: decode audio for VAD silences and compute peak envelope.
   // The decoded PCM is reused for both — one file read, two outputs.
@@ -471,17 +520,16 @@ export default function App() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Keyboard shortcuts for playback. Tab is NOT intercepted here — leave it
-  // for native DOM focus traversal.
+  // Playback shortcuts never override the native keyboard behavior of focused controls.
   useEffect(() => {
-    const isEditableTarget = (target: EventTarget | null) => {
+    const isInteractiveTarget = (target: EventTarget | null) => {
       if (!(target instanceof HTMLElement)) return false;
-      const tag = target.tagName.toLowerCase();
-      return tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable;
+      return target.isContentEditable || Boolean(target.closest('button, a, input, textarea, select, summary, [role=\"button\"], [role=\"tab\"], [role=\"menuitem\"]'));
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (!done || isEditableTarget(event.target)) return;
+      const dialogOpen = showFaq || showLibrary || showWelcome || Boolean(confirmDialog.request);
+      if (!done || !sourceAudioAvailable || dialogOpen || isInteractiveTarget(event.target)) return;
       if (event.key === ' ') {
         event.preventDefault();
         togglePlay();
@@ -496,7 +544,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentTime, done, seek, togglePlay]);
+  }, [confirmDialog.request, currentTime, done, seek, showFaq, showLibrary, showWelcome, sourceAudioAvailable, togglePlay]);
 
   return (
     <div className="app-shell relative flex flex-col text-slate-100 p-3 md:p-6">
@@ -512,7 +560,7 @@ export default function App() {
         error={projectError}
         onRetry={() => void refreshProjects()}
         onOpenProject={handleOpenProject}
-        onDeleteProject={remove}
+        onDeleteProject={handleDeleteProject}
       />
       {confirmDialog.request && (
         <ConfirmDialog
@@ -581,9 +629,10 @@ export default function App() {
                   <div><strong>File not supported</strong><p>{fileError}</p></div>
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-1 bg-white/[0.03] rounded-xl p-1">
+              <div className="grid grid-cols-2 gap-1 bg-white/[0.03] rounded-xl p-1" role="group" aria-label="Audio input method">
                 <button
                   onClick={() => setInputMode('file')}
+                  aria-pressed={inputMode === 'file'}
                   className={`rounded-lg py-2 text-[11px] font-semibold transition-colors cursor-pointer min-h-[44px] ${
                     inputMode === 'file' ? 'bg-sky-500/20 text-sky-100' : 'hover:text-white'
                   }`}
@@ -593,6 +642,7 @@ export default function App() {
                 </button>
                 <button
                   onClick={() => setInputMode('record')}
+                  aria-pressed={inputMode === 'record'}
                   className={`rounded-lg py-2 text-[11px] font-semibold transition-colors cursor-pointer min-h-[44px] ${
                     inputMode === 'record' ? 'bg-sky-500/20 text-sky-100' : 'hover:text-white'
                   }`}
@@ -603,16 +653,18 @@ export default function App() {
               </div>
 
               {inputMode === 'file' ? (
-                <div className="relative border-2 border-dashed border-white/10 hover:border-sky-400/50 rounded-xl p-6 flex flex-col items-center justify-center text-center transition-colors min-h-[120px]">
+                <div className="file-drop-zone relative border-2 border-dashed border-white/10 hover:border-sky-400/50 rounded-xl p-6 flex flex-col items-center justify-center text-center transition-colors min-h-[120px]">
                   <input
                     type="file"
                     accept="audio/*"
+                    aria-label="Choose an audio file to transcribe"
+                    aria-describedby="audio-file-help"
                     onChange={handleFileChange}
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                   />
                   <FileAudio className="w-8 h-8 text-sky-300 mb-2" />
                   <span className="text-base font-semibold" style={{ color: 'var(--text)' }}>Choose audio file</span>
-                  <span className="text-sm mt-1" style={{ color: 'var(--text-subtle)' }}>MP3, WAV, M4A, OGG, WebM, AAC, or FLAC · 200 MB upload limit</span>
+                  <span id="audio-file-help" className="text-sm mt-1" style={{ color: 'var(--text-subtle)' }}>MP3, WAV, M4A, OGG, WebM, AAC, FLAC, or MP4 · 200 MB upload limit</span>
                 </div>
               ) : (
                 <div className="rounded-xl border border-white/10 bg-white/[0.03] p-5 text-center space-y-4">
@@ -621,7 +673,7 @@ export default function App() {
                   </div>
                   <div>
                     <p className="text-xs font-semibold" style={{ color: 'var(--text)' }}>
-                      {recorder.status === 'recording' ? 'Recording...' : 'Record from microphone'}
+                      {recorder.status === 'requesting' ? 'Requesting microphone access…' : recorder.status === 'recording' ? 'Recording…' : 'Record from microphone'}
                     </p>
                     <p className="text-[11px] mt-1" style={{ color: 'var(--text-subtle)' }}>
                       {recorder.status === 'recording'
@@ -629,7 +681,7 @@ export default function App() {
                         : 'When you stop, the recording loads like any other audio file.'}
                     </p>
                   </div>
-                  <div className="h-2 rounded-full bg-white/[0.05] overflow-hidden border border-white/10">
+                  <div className="h-2 rounded-full bg-white/[0.05] overflow-hidden border border-white/10" role="progressbar" aria-label="Microphone input level" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(recorder.level * 100)}>
                     <div
                       className="h-full bg-gradient-to-r from-sky-400 to-blue-500 transition-all"
                       style={{ width: `${Math.round(recorder.level * 100)}%` }}
@@ -648,9 +700,10 @@ export default function App() {
                   ) : (
                     <button
                       onClick={recorder.start}
+                      disabled={recorder.status === 'requesting'}
                       className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-blue-600 text-white px-4 py-2 text-xs font-bold hover:from-sky-300 hover:to-blue-500 transition-colors cursor-pointer min-h-[44px]"
                     >
-                      <Mic className="w-4 h-4" /> Start recording
+                      <Mic className="w-4 h-4" /> {recorder.status === 'requesting' ? 'Waiting for permission…' : 'Start recording'}
                     </button>
                   )}
                 </div>
@@ -720,14 +773,14 @@ export default function App() {
               {done && sourceAudioAvailable && (
                 <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: 'var(--warn-border)', background: 'var(--warn-bg)' }}>
                   <p className="text-[11px]" style={{ color: 'var(--warn)' }}>
-                    Re-run keeps this file selected so you can change the model or options. It will replace the current Spanish transcript, English translation, and edits.
+                    Change settings keeps this file selected and returns to the run controls. Starting again will replace the current transcript, translation, and edits.
                   </p>
                   <button
                     onClick={handleRerun}
                     className="w-full border font-semibold py-2 rounded-xl text-xs transition-colors cursor-pointer min-h-[44px] hover:opacity-90"
                     style={{ background: 'rgba(255,255,255,0.04)', borderColor: 'var(--warn-border)', color: 'var(--warn)' }}
                   >
-                    Re-run with new settings
+                    Change settings before re-running
                   </button>
                 </div>
               )}
@@ -749,17 +802,18 @@ export default function App() {
           <div className="space-y-3">
             <div className="result-status" role="status">
               <span className="status-chip" data-state="complete"><CheckCircle aria-hidden="true" /> Spanish transcript complete</span>
-              <span className="status-chip" data-state={translation?.segments.some((segment) => segment.text.trim()) ? 'complete' : 'warning'}>
-                <Languages aria-hidden="true" /> {translation?.segments.some((segment) => segment.text.trim()) ? 'English translation complete' : 'English translation unavailable'}
+              <span className="status-chip" data-state={translation?.warning || !translation?.segments.some((segment) => segment.text.trim()) ? 'warning' : 'complete'}>
+                <Languages aria-hidden="true" /> {translation?.warning ? 'English translation incomplete' : translation?.segments.some((segment) => segment.text.trim()) ? 'English translation complete' : 'English translation unavailable'}
               </span>
               <span className="status-chip" data-state={resultSaveState === 'error' ? 'error' : resultSaveState === 'saved' ? 'complete' : 'warning'}>
                 {resultSaveState === 'saving' ? 'Saving on this device…' : resultSaveState === 'saved' ? 'Saved on this device' : resultSaveState === 'error' ? 'Not saved' : 'Save pending'}
               </span>
-              <span className="status-chip">{retainAudio ? 'Source audio retained in saved project' : 'Saved project is transcript only'}</span>
+              <span className="status-chip">{resultSaveState === 'saved' ? (retainAudio ? 'Source audio saved with project' : 'Saved project is transcript only') : (retainAudio ? 'Source audio retention selected' : 'Transcript-only saving selected')}</span>
             </div>
+            {translation?.warning && <div className="state-message state-message--warning" role="status"><AlertTriangle aria-hidden="true" /><div><strong>English translation is incomplete</strong><p>{translation.warning} The Spanish transcript is complete.</p></div></div>}
             <div className="mobile-result-tabs" role="tablist" aria-label="Result language">
-              <button id="spanish-result-tab" type="button" role="tab" aria-selected={resultTab === 'spanish'} aria-controls="spanish-result-panel" onClick={() => setResultTab('spanish')}>Spanish</button>
-              <button id="english-result-tab" type="button" role="tab" aria-selected={resultTab === 'english'} aria-controls="english-result-panel" onClick={() => setResultTab('english')}>English</button>
+              <button id="spanish-result-tab" type="button" role="tab" tabIndex={resultTab === 'spanish' ? 0 : -1} aria-selected={resultTab === 'spanish'} aria-controls="spanish-result-panel" onClick={() => setResultTab('spanish')} onKeyDown={(event) => handleResultTabKeyDown(event, 'spanish')}>Spanish</button>
+              <button id="english-result-tab" type="button" role="tab" tabIndex={resultTab === 'english' ? 0 : -1} aria-selected={resultTab === 'english'} aria-controls="english-result-panel" onClick={() => setResultTab('english')} onKeyDown={(event) => handleResultTabKeyDown(event, 'english')}>English</button>
             </div>
             <div className="results-grid">
 
