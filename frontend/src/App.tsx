@@ -8,6 +8,7 @@ import {
   CheckCircle,
   AlertTriangle,
   Info,
+  Languages,
   HelpCircle,
   Library,
   Mic,
