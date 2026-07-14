@@ -33,7 +33,7 @@ export function ProgressPanel({ status, modelProgress, progress, onCancel }: Pro
             ? 'Translation time varies with transcript length and device speed.'
             : status === 'decoding'
             ? 'Reading and preparing the selected audio file.'
-            : 'You can leave this screen open while the transcript is created.'}
+            : 'Keep this screen open while the transcript is created.'}
         </p>
       </div>
 
@@ -45,7 +45,7 @@ export function ProgressPanel({ status, modelProgress, progress, onCancel }: Pro
         ))}
       </ol>
 
-      <div className="progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={determinate == null ? undefined : Math.round(determinate * 100)}>
+      <div className="progress-track" role="progressbar" aria-label="Processing progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={determinate == null ? undefined : Math.round(determinate * 100)} aria-valuetext={determinate == null ? `${PHASES[currentIndex]?.label ?? 'Processing'} in progress` : `${Math.round(determinate * 100)} percent`}>
         {determinate == null ? <span className="progress-track__indeterminate" /> : <span style={{ width: `${Math.round(determinate * 100)}%` }} />}
       </div>
 

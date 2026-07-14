@@ -5,6 +5,7 @@ import type { Translation } from '../hooks/useTranscriber';
 import { EXPORT_FORMATS, type ExportFormat } from '../lib/exporters';
 import { saveTextFile } from '../lib/fileSave';
 import { notify } from '../lib/toast';
+import { formatTranscriptText } from '../lib/uiState';
 
 interface TranscriptExportProps {
   captions: CaptionWord[];
@@ -15,7 +16,7 @@ interface TranscriptExportProps {
 export function CaptionExport({ captions, translation, fileName = 'transcript' }: TranscriptExportProps) {
   const [copied, setCopied] = useState<'spanish' | 'english' | null>(null);
   const disabled = captions.length === 0;
-  const spanish = captions.map((word) => word.text).join(' ').replace(/\s+/g, ' ').trim();
+  const spanish = formatTranscriptText(captions);
   const english = translation?.text.trim() ?? '';
   const input = { words: captions, translation: translation ?? null };
 

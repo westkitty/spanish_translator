@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  listProjects,
-  getProject,
-  putProject,
   deleteProject,
+  getProject,
+  listProjects,
+  putProject,
   type ProjectMeta,
   type StoredProject,
 } from '../lib/db';
@@ -18,36 +18,55 @@ export function useProjects() {
   const [projects, setProjects] = useState<ProjectMeta[]>([]);
   const [status, setStatus] = useState<ProjectStoreStatus>('idle');
   const [error, setError] = useState<string | null>(null);
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const pendingSavesRef = useRef(0);
+
+  const loadProjects = useCallback(async () => {
+    setProjects(await listProjects());
+  }, []);
 
   const refresh = useCallback(async () => {
     setStatus('loading');
     setError(null);
     try {
-      setProjects(await listProjects());
+      await loadProjects();
       setStatus('idle');
     } catch (cause) {
       setStatus('error');
       setError(`Saved transcripts could not be loaded. ${messageFrom(cause)}`);
     }
-  }, []);
+  }, [loadProjects]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
-  const save = useCallback(async (project: StoredProject) => {
+  const save = useCallback((project: StoredProject): Promise<void> => {
+    pendingSavesRef.current += 1;
     setStatus('saving');
     setError(null);
-    try {
-      await putProject(project);
-      setProjects(await listProjects());
-      setStatus('idle');
-    } catch (cause) {
-      setStatus('error');
-      setError(`This transcript was not saved. ${messageFrom(cause)}`);
-      throw cause;
-    }
-  }, []);
+
+    const operation = saveQueueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        await putProject(project);
+        await loadProjects();
+      });
+
+    saveQueueRef.current = operation;
+    return operation.then(
+      () => {
+        pendingSavesRef.current -= 1;
+        if (pendingSavesRef.current === 0) setStatus('idle');
+      },
+      (cause) => {
+        pendingSavesRef.current -= 1;
+        setStatus('error');
+        setError(`This transcript was not saved. ${messageFrom(cause)}`);
+        throw cause;
+      }
+    );
+  }, [loadProjects]);
 
   const open = useCallback(async (id: string) => {
     setError(null);
@@ -65,14 +84,14 @@ export function useProjects() {
     setError(null);
     try {
       await deleteProject(id);
-      setProjects(await listProjects());
+      await loadProjects();
       setStatus('idle');
     } catch (cause) {
       setStatus('error');
       setError(`That transcript could not be deleted. ${messageFrom(cause)}`);
       throw cause;
     }
-  }, []);
+  }, [loadProjects]);
 
   const rename = useCallback(async (id: string, name: string) => {
     const existing = await getProject(id);

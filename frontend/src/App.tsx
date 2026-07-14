@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Play,
   Pause,
@@ -40,6 +40,7 @@ import { findSilences, type SilenceRange } from './lib/vad';
 import { saveBlobFile, saveTextFile } from './lib/fileSave';
 import { getStoredFlag, setStoredFlag } from './lib/storage';
 import { availableTiers, defaultModel, type WhisperModel } from './lib/models';
+import { validateAudioFile } from './lib/uiState';
 
 const RESULT_TIP_SEEN_KEY = 'dexterpreter-seen-result-tip';
 
@@ -64,6 +65,8 @@ export default function App() {
   const [retainAudio, setRetainAudio] = useState(true);
   const [resultTab, setResultTab] = useState<'spanish' | 'english'>('spanish');
   const [fileError, setFileError] = useState<string | null>(null);
+  const [sourceAudioAvailable, setSourceAudioAvailable] = useState(false);
+  const [resultSaveState, setResultSaveState] = useState<'not-started' | 'saving' | 'saved' | 'error'>('not-started');
 
   const {
     status,
@@ -148,6 +151,7 @@ export default function App() {
 
   const projectBaseRef = useRef<Omit<StoredProject, 'words' | 'translation' | 'updatedAt' | 'peaks'> | null>(null);
   const pendingSaveRef = useRef(false);
+  const saveSequenceRef = useRef(0);
 
   const {
     isPlaying,
@@ -164,6 +168,15 @@ export default function App() {
     seek,
   } = useAudioPlayer();
 
+  const saveResult = useCallback((project: StoredProject) => {
+    const sequence = ++saveSequenceRef.current;
+    setResultSaveState('saving');
+    void save(project).then(
+      () => { if (sequence === saveSequenceRef.current) setResultSaveState('saved'); },
+      () => { if (sequence === saveSequenceRef.current) setResultSaveState('error'); }
+    );
+  }, [save]);
+
   const isWorking =
     status === 'decoding' ||
     status === 'loading-model' ||
@@ -172,15 +185,23 @@ export default function App() {
   const done = status === 'done';
 
   useEffect(() => {
-    if (done && file) {
+    if (done && file && sourceAudioAvailable) {
       const url = URL.createObjectURL(file);
       setSrc(url);
       return () => URL.revokeObjectURL(url);
     }
-  }, [done, file, setSrc]);
+  }, [done, file, setSrc, sourceAudioAvailable]);
 
   useEffect(() => {
     if (!recorder.file) return;
+    const validationError = validateAudioFile(recorder.file);
+    if (validationError) {
+      setFileError(validationError);
+      return;
+    }
+    setFileError(null);
+    setSourceAudioAvailable(true);
+    setResultSaveState('not-started');
     setFile(recorder.file);
     projectBaseRef.current = null;
     setSelectedRange(null);
@@ -195,12 +216,11 @@ export default function App() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const selected = e.target.files[0];
-      setFileError(null);
-      if (selected.size > 200 * 1024 * 1024) {
-        setFileError('This file is larger than the current 200 MB support limit. Choose a shorter or more compressed recording.');
-        e.target.value = '';
-        return;
-      }
+      const validationError = validateAudioFile(selected);
+      setFileError(validationError);
+      if (validationError) { e.target.value = ''; return; }
+      setSourceAudioAvailable(true);
+      setResultSaveState('not-started');
       setFile(selected);
       projectBaseRef.current = null;
       setSelectedRange(null);
@@ -216,6 +236,8 @@ export default function App() {
   const handleReset = () => {
     setFile(null);
     setFileError(null);
+    setSourceAudioAvailable(false);
+    setResultSaveState('not-started');
     projectBaseRef.current = null;
     setSelectedRange(null);
     setSelectRegionMode(false);
@@ -229,7 +251,7 @@ export default function App() {
   };
 
   const handleStart = () => {
-    if (!file) return;
+    if (!file || !sourceAudioAvailable) return;
     setSelectedRange(null);
     setSelectRegionMode(false);
     setSilences([]);
@@ -282,8 +304,8 @@ export default function App() {
     setRedoStack([]);
     // Peaks may not be ready yet (async decode) — they'll be included in the
     // autosave once computed.
-    save({ ...base, words: captions, translation, updatedAt: Date.now() });
-  }, [done, file, captions, translation, model, retainAudio, save]);
+    saveResult({ ...base, words: captions, translation, updatedAt: Date.now() });
+  }, [done, file, captions, translation, model, retainAudio, saveResult]);
 
   // Autosave edits (debounced). Also fires when peaks become available so the
   // cached envelope is stored with the project.
@@ -291,7 +313,7 @@ export default function App() {
     const base = projectBaseRef.current;
     if (!done || !base) return;
     const t = window.setTimeout(() => {
-      save({
+      saveResult({
         ...base,
         words: captions,
         translation,
@@ -300,7 +322,7 @@ export default function App() {
       });
     }, 800);
     return () => window.clearTimeout(t);
-  }, [captions, translation, peaks, done, save]);
+  }, [captions, translation, peaks, done, saveResult]);
 
   const handleRerun = async () => {
     const confirmed = await confirmDialog.confirm({
@@ -325,7 +347,7 @@ export default function App() {
   };
 
   const handleRegionRerun = async () => {
-    if (!file || !selectedRange) return;
+    if (!file || !selectedRange || !sourceAudioAvailable) return;
 
     const confirmed = await confirmDialog.confirm({
       title: 'Re-run selected region?',
@@ -341,7 +363,7 @@ export default function App() {
   };
 
   const handleExportClip = async (sentence: Sentence) => {
-    if (!file) return;
+    if (!file || !sourceAudioAvailable) return;
     const baseName = file.name.replace(/\.[^/.]+$/, '');
     const clipName = `${baseName}-${Math.round(sentence.start)}-${Math.round(sentence.end)}`;
     const wav = await extractWavClip(file, sentence.start, sentence.end);
@@ -384,6 +406,10 @@ export default function App() {
     // is decoded asynchronously.
     setPeaks(p.peaks ?? []);
 
+    const hasStoredAudio = p.audioBlob.size > 0;
+    setSourceAudioAvailable(hasStoredAudio);
+    setRetainAudio(hasStoredAudio);
+    setResultSaveState('saved');
     setFile(restored);
     loadResult(p.words, p.translation);
     setShowLibrary(false);
@@ -416,7 +442,7 @@ export default function App() {
   // Wave 2: decode audio for VAD silences and compute peak envelope.
   // The decoded PCM is reused for both — one file read, two outputs.
   useEffect(() => {
-    if (!done || !file) {
+    if (!done || !file || !sourceAudioAvailable) {
       setSilences([]);
       setPeaks([]);
       return;
@@ -436,7 +462,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [done, file]);
+  }, [done, file, sourceAudioAvailable]);
 
   const formatElapsedMs = (ms: number) => {
     const seconds = Math.round(ms / 1000);
@@ -549,6 +575,12 @@ export default function App() {
                 <h2>Transcribe Spanish audio</h2>
                 <p>Choose an audio file or record speech. The app creates a Spanish transcript and then attempts an English translation.</p>
               </div>
+              {fileError && (
+                <div className="state-message state-message--error" role="alert">
+                  <AlertTriangle aria-hidden="true" />
+                  <div><strong>File not supported</strong><p>{fileError}</p></div>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-1 bg-white/[0.03] rounded-xl p-1">
                 <button
                   onClick={() => setInputMode('file')}
@@ -580,7 +612,7 @@ export default function App() {
                   />
                   <FileAudio className="w-8 h-8 text-sky-300 mb-2" />
                   <span className="text-base font-semibold" style={{ color: 'var(--text)' }}>Choose audio file</span>
-                  <span className="text-sm mt-1" style={{ color: 'var(--text-subtle)' }}>MP3, WAV, M4A, or OGG · up to 200 MB</span>
+                  <span className="text-sm mt-1" style={{ color: 'var(--text-subtle)' }}>MP3, WAV, M4A, OGG, WebM, AAC, or FLAC · 200 MB upload limit</span>
                 </div>
               ) : (
                 <div className="rounded-xl border border-white/10 bg-white/[0.03] p-5 text-center space-y-4">
@@ -657,13 +689,6 @@ export default function App() {
                 />
               )}
 
-              {fileError && (
-                <div className="state-message state-message--error" role="alert">
-                  <AlertTriangle aria-hidden="true" />
-                  <div><strong>File not supported</strong><p>{fileError}</p></div>
-                </div>
-              )}
-
               {/* Error */}
               {error && (
                 <div className="bg-rose-950/60 border border-rose-800/60 rounded-lg p-2.5 flex items-start gap-2 text-[11px] text-rose-300">
@@ -692,7 +717,7 @@ export default function App() {
               )}
 
               {/* Re-run card */}
-              {done && (
+              {done && sourceAudioAvailable && (
                 <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: 'var(--warn-border)', background: 'var(--warn-bg)' }}>
                   <p className="text-[11px]" style={{ color: 'var(--warn)' }}>
                     Re-run keeps this file selected so you can change the model or options. It will replace the current Spanish transcript, English translation, and edits.
@@ -727,19 +752,19 @@ export default function App() {
               <span className="status-chip" data-state={translation?.segments.some((segment) => segment.text.trim()) ? 'complete' : 'warning'}>
                 <Languages aria-hidden="true" /> {translation?.segments.some((segment) => segment.text.trim()) ? 'English translation complete' : 'English translation unavailable'}
               </span>
-              <span className="status-chip" data-state={projectStatus === 'error' ? 'error' : projectStatus === 'saving' ? 'warning' : 'complete'}>
-                {projectStatus === 'saving' ? 'Saving on this device…' : projectStatus === 'error' ? 'Not saved' : 'Saved on this device'}
+              <span className="status-chip" data-state={resultSaveState === 'error' ? 'error' : resultSaveState === 'saved' ? 'complete' : 'warning'}>
+                {resultSaveState === 'saving' ? 'Saving on this device…' : resultSaveState === 'saved' ? 'Saved on this device' : resultSaveState === 'error' ? 'Not saved' : 'Save pending'}
               </span>
-              <span className="status-chip">{retainAudio ? 'Source audio retained' : 'Transcript only; source audio not retained'}</span>
+              <span className="status-chip">{retainAudio ? 'Source audio retained in saved project' : 'Saved project is transcript only'}</span>
             </div>
-            <div className="mobile-result-tabs" aria-label="Result language">
-              <button type="button" onClick={() => setResultTab('spanish')} aria-pressed={resultTab === 'spanish'}>Spanish</button>
-              <button type="button" onClick={() => setResultTab('english')} aria-pressed={resultTab === 'english'}>English</button>
+            <div className="mobile-result-tabs" role="tablist" aria-label="Result language">
+              <button id="spanish-result-tab" type="button" role="tab" aria-selected={resultTab === 'spanish'} aria-controls="spanish-result-panel" onClick={() => setResultTab('spanish')}>Spanish</button>
+              <button id="english-result-tab" type="button" role="tab" aria-selected={resultTab === 'english'} aria-controls="english-result-panel" onClick={() => setResultTab('english')}>English</button>
             </div>
             <div className="results-grid">
 
             {/* Left column: player + waveform + Spanish editor + export */}
-            <div className="result-pane flex flex-col gap-3.5 min-w-0" data-active={resultTab === 'spanish'}>
+            <div id="spanish-result-panel" role="tabpanel" aria-labelledby="spanish-result-tab" className="result-pane flex flex-col gap-3.5 min-w-0" data-active={resultTab === 'spanish'}>
 
               {/* Result tip */}
               {showResultTip && (
@@ -762,7 +787,7 @@ export default function App() {
               )}
 
               {/* Player card: waveform + transport + region/loop controls */}
-              {file && file.size > 0 ? (
+              {sourceAudioAvailable ? (
               <div className="player-card space-y-3">
                 <AudioCanvas
                   duration={duration}
@@ -899,7 +924,7 @@ export default function App() {
                 </details>
               </div>
               ) : (
-                <div className="state-message"><Info aria-hidden="true" /><div><strong>Transcript-only project</strong><p>The source audio was not retained, so playback and clip tools are unavailable.</p></div></div>
+                <div className="state-message" role="status"><Info aria-hidden="true" /><div><strong>Transcript-only project</strong><p>The source audio was not retained, so playback, seeking, clips, looping, and reprocessing are unavailable.</p></div></div>
               )}
 
               {/* "Remember corrections" inline link */}
@@ -934,7 +959,8 @@ export default function App() {
                 canRedo={redoStack.length > 0}
                 canRevert={originalRef.current !== null && originalRef.current !== captions}
                 silences={silences}
-                onExportClip={handleExportClip}
+                onExportClip={sourceAudioAvailable ? handleExportClip : undefined}
+                audioAvailable={sourceAudioAvailable}
               />
 
               {/* Export panel — in left column so it's reachable after reading */}
@@ -946,11 +972,12 @@ export default function App() {
             </div>
 
             {/* Right column: synced English translation — sticky on tablet */}
-            <div className="result-pane translation-pane" data-active={resultTab === 'english'}>
+            <div id="english-result-panel" role="tabpanel" aria-labelledby="english-result-tab" className="result-pane translation-pane" data-active={resultTab === 'english'}>
               <TranslationPanel
                 translation={translation}
                 currentTime={currentTime}
                 onSeek={seek}
+                audioAvailable={sourceAudioAvailable}
               />
             </div>
           </div>

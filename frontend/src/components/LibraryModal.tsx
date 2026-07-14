@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Clock, FileAudio, FolderOpen, Loader2, Trash2 } from 'lucide-react';
 import { Modal } from './Modal';
 import type { ProjectMeta } from '../lib/db';
@@ -11,7 +11,7 @@ interface LibraryModalProps {
   status: ProjectStoreStatus;
   error: string | null;
   onRetry: () => void;
-  onOpenProject: (id: string) => void;
+  onOpenProject: (id: string) => Promise<void> | void;
   onDeleteProject: (id: string) => Promise<void> | void;
 }
 
@@ -37,7 +37,45 @@ export function LibraryModal({
   onDeleteProject,
 }: LibraryModalProps) {
   const [pendingDelete, setPendingDelete] = useState<ProjectMeta | null>(null);
+  const [openingId, setOpeningId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const cancelDeleteRef = useRef<HTMLButtonElement | null>(null);
   const loading = status === 'loading';
+  const busy = openingId !== null || deletingId !== null;
+
+  useEffect(() => {
+    if (!open) {
+      setPendingDelete(null);
+      setOpeningId(null);
+      setDeletingId(null);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (pendingDelete) cancelDeleteRef.current?.focus();
+  }, [pendingDelete]);
+
+  const openProject = async (id: string) => {
+    setOpeningId(id);
+    try {
+      await onOpenProject(id);
+    } finally {
+      setOpeningId(null);
+    }
+  };
+
+  const deleteProject = async () => {
+    if (!pendingDelete) return;
+    setDeletingId(pendingDelete.id);
+    try {
+      await onDeleteProject(pendingDelete.id);
+      setPendingDelete(null);
+    } catch {
+      // The store exposes the actionable error above the list.
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   return (
     <Modal open={open} onClose={onClose} title="Saved transcripts" labelledBy="library-title">
@@ -64,17 +102,23 @@ export function LibraryModal({
           <p>Completed transcripts appear here after they are saved on this device.</p>
         </div>
       ) : (
-        <div className="library-list">
+        <div className="library-list" aria-busy={busy}>
           {projects.map((project) => (
             <div key={project.id} className="library-row">
               <FileAudio aria-hidden="true" />
-              <button type="button" onClick={() => onOpenProject(project.id)} className="library-row__open">
-                <strong>{project.name}</strong>
+              <button
+                type="button"
+                onClick={() => void openProject(project.id)}
+                disabled={busy}
+                className="library-row__open"
+              >
+                <strong>{openingId === project.id ? 'Opening…' : project.name}</strong>
                 <span><Clock aria-hidden="true" /> {relativeDate(project.updatedAt)} · {duration(project.durationSec)}</span>
               </button>
               <button
                 type="button"
                 onClick={() => setPendingDelete(project)}
+                disabled={busy}
                 aria-label={`Delete ${project.name}`}
                 className="icon-button icon-button--danger"
               >
@@ -86,20 +130,13 @@ export function LibraryModal({
       )}
 
       {pendingDelete && (
-        <div className="delete-confirmation" role="alertdialog" aria-labelledby="delete-project-title">
+        <div className="delete-confirmation" role="alertdialog" aria-modal="true" aria-labelledby="delete-project-title">
           <h3 id="delete-project-title">Delete “{pendingDelete.name}”?</h3>
           <p>The transcript, translation, edits, and any retained source audio will be permanently removed.</p>
           <div className="dialog-actions">
-            <button type="button" onClick={() => setPendingDelete(null)} className="secondary-button">Cancel</button>
-            <button
-              type="button"
-              onClick={async () => {
-                await onDeleteProject(pendingDelete.id);
-                setPendingDelete(null);
-              }}
-              className="danger-button"
-            >
-              Delete permanently
+            <button ref={cancelDeleteRef} type="button" onClick={() => setPendingDelete(null)} disabled={deletingId !== null} className="secondary-button">Cancel</button>
+            <button type="button" onClick={() => void deleteProject()} disabled={deletingId !== null} className="danger-button">
+              {deletingId ? 'Deleting…' : 'Delete permanently'}
             </button>
           </div>
         </div>

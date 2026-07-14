@@ -19,6 +19,7 @@ interface TranscriptViewProps {
   canRevert: boolean;
   silences?: SilenceRange[];
   onExportClip?: (sentence: Sentence) => void;
+  audioAvailable?: boolean;
 }
 
 export function TranscriptView({
@@ -36,6 +37,7 @@ export function TranscriptView({
   canRevert,
   silences = [],
   onExportClip,
+  audioAvailable = true,
 }: TranscriptViewProps) {
   const [mode, setMode] = useState<'words' | 'read'>('read');
   const [find, setFind] = useState('');
@@ -44,10 +46,13 @@ export function TranscriptView({
   const [followPlayhead, setFollowPlayhead] = useState(true);
   const activeSentenceRef = useRef<HTMLButtonElement | null>(null);
   const sentences = useMemo(() => buildSentences(captions, silences), [captions, silences]);
+  const activeSentenceId = sentences.find((sentence) => currentTime >= sentence.start && currentTime <= sentence.end)?.id ?? null;
 
   useEffect(() => {
-    if (mode === 'read' && followPlayhead) activeSentenceRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }, [currentTime, followPlayhead, mode]);
+    if (mode === 'read' && followPlayhead && activeSentenceId) {
+      activeSentenceRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, [activeSentenceId, followPlayhead, mode]);
 
   return (
     <section className="result-section transcript-section" aria-labelledby="transcript-heading">
@@ -83,16 +88,20 @@ export function TranscriptView({
               const active = currentTime >= sentence.start && currentTime <= sentence.end;
               return (
                 <div key={sentence.id} className="sentence-row" data-active={active}>
-                  <button
-                    ref={active ? activeSentenceRef : undefined}
-                    type="button"
-                    onClick={() => onSeek(sentence.start)}
-                    className="sentence-row__seek"
-                    aria-label={`Seek to ${sentence.start.toFixed(1)} seconds: ${sentence.text}`}
-                  >
-                    {sentence.text}
-                  </button>
-                  {onExportClip && (
+                  {audioAvailable ? (
+                    <button
+                      ref={active ? activeSentenceRef : undefined}
+                      type="button"
+                      onClick={() => onSeek(sentence.start)}
+                      className="sentence-row__seek"
+                      aria-label={`Seek to ${sentence.start.toFixed(1)} seconds: ${sentence.text}`}
+                    >
+                      {sentence.text}
+                    </button>
+                  ) : (
+                    <p className="sentence-row__text">{sentence.text}</p>
+                  )}
+                  {audioAvailable && onExportClip && (
                     <button type="button" onClick={() => onExportClip(sentence)} className="sentence-row__clip">
                       <Download aria-hidden="true" /> Export clip
                     </button>

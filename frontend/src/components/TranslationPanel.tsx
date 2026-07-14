@@ -6,16 +6,20 @@ interface TranslationPanelProps {
   translation: Translation | null;
   currentTime: number;
   onSeek: (time: number) => void;
+  audioAvailable?: boolean;
 }
 
-export function TranslationPanel({ translation, currentTime, onSeek }: TranslationPanelProps) {
+export function TranslationPanel({ translation, currentTime, onSeek, audioAvailable = true }: TranslationPanelProps) {
   const activeRef = useRef<HTMLButtonElement | null>(null);
   const [followPlayhead, setFollowPlayhead] = useState(true);
   const segments = translation?.segments.filter((segment) => segment.text.trim().length > 0) ?? [];
+  const activeSegmentId = segments.find((segment) => currentTime >= segment.start && currentTime <= segment.end)?.id ?? null;
 
   useEffect(() => {
-    if (followPlayhead) activeRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }, [currentTime, followPlayhead]);
+    if (followPlayhead && activeSegmentId) {
+      activeRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, [activeSegmentId, followPlayhead]);
 
   return (
     <section className="result-section translation-section" aria-labelledby="translation-heading">
@@ -46,17 +50,21 @@ export function TranslationPanel({ translation, currentTime, onSeek }: Translati
           {segments.map((segment) => {
             const active = currentTime >= segment.start && currentTime <= segment.end;
             return (
-              <button
-                key={segment.id}
-                ref={active ? activeRef : undefined}
-                type="button"
-                onClick={() => onSeek(segment.start)}
-                className="translation-segment"
-                data-active={active}
-                aria-label={`Seek to ${segment.start.toFixed(1)} seconds: ${segment.text}`}
-              >
-                {segment.text}
-              </button>
+              audioAvailable ? (
+                <button
+                  key={segment.id}
+                  ref={active ? activeRef : undefined}
+                  type="button"
+                  onClick={() => onSeek(segment.start)}
+                  className="translation-segment"
+                  data-active={active}
+                  aria-label={`Seek to ${segment.start.toFixed(1)} seconds: ${segment.text}`}
+                >
+                  {segment.text}
+                </button>
+              ) : (
+                <p key={segment.id} className="translation-segment translation-segment--static">{segment.text}</p>
+              )
             );
           })}
         </div>
