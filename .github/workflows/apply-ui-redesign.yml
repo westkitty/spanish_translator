@@ -1,24 +1,20 @@
-name: Apply UI redesign
+name: Validate UI redesign
 
 on:
   push:
     branches:
       - ui/adversarial-redesign-2026-07-14
     paths:
-      - .github/ui-redesign/**
       - .github/workflows/apply-ui-redesign.yml
   pull_request:
     branches:
       - main
-    paths:
-      - .github/ui-redesign/**
-      - .github/workflows/apply-ui-redesign.yml
 
 permissions:
   contents: write
 
 jobs:
-  apply:
+  validate:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -31,53 +27,32 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Reconstruct and verify patch
+      - name: Correct missing icon import
         run: |
           python3 - <<'PY'
-          import base64, gzip, hashlib
           from pathlib import Path
-          parts = sorted(Path('.github/ui-redesign').glob('payload.part*'))
-          encoded = b''.join(part.read_bytes() for part in parts)
-          encoded = b''.join(encoded.split())
-          assert len(encoded) == 20480
-          assert hashlib.sha256(encoded).hexdigest() == '7d093bd90fd7b8fe79a30f51acf2f4d279be3542d16f2e503374f977f4719868'
-          compressed = base64.b64decode(encoded, validate=True)
-          assert hashlib.sha256(compressed).hexdigest() == 'c4c33ce7ae662e398c0551121187eaed7537904cc706a1e8f9dc7413a10ae8f2'
-          source = gzip.decompress(compressed)
-          assert hashlib.sha256(source).hexdigest() == 'cd91d068c52191b66a165d371707fc8519d9e19ab8888c1779dd7f2f9160a902'
-          Path('/tmp/apply-ui.py').write_bytes(source)
+          path = Path('frontend/src/App.tsx')
+          source = path.read_text()
+          old = '  AlertTriangle,\n  Info,\n  HelpCircle,'
+          new = '  AlertTriangle,\n  Info,\n  Languages,\n  HelpCircle,'
+          if old not in source:
+              raise SystemExit('expected App.tsx import anchor not found')
+          path.write_text(source.replace(old, new, 1))
+          Path('frontend/UI_BUILD_ERRORS.txt').unlink(missing_ok=True)
           PY
-      - name: Apply redesign
-        run: python3 /tmp/apply-ui.py
-      - name: Refresh lockfile
-        working-directory: frontend
-        run: npm install --package-lock-only --ignore-scripts
-      - name: Commit generated redesign
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add frontend
-          git diff --cached --quiet || git commit -m "feat(ui): apply adversarial UX redesign"
-          git push
       - name: Clean install
         working-directory: frontend
         run: npm ci
       - name: Build
-        id: build
         working-directory: frontend
-        run: |
-          set +e
-          npm run build > /tmp/ui-build.log 2>&1
-          code=$?
-          cat /tmp/ui-build.log
-          if [ $code -ne 0 ]; then cp /tmp/ui-build.log UI_BUILD_ERRORS.txt; fi
-          exit $code
-      - name: Commit build diagnostics
-        if: failure() && steps.build.outcome == 'failure'
-        run: |
-          git add frontend/UI_BUILD_ERRORS.txt
-          git commit -m "chore(ui): capture redesign build errors" || true
-          git push
+        run: npm run build
       - name: Test
         working-directory: frontend
         run: npm run test
+      - name: Commit validated correction
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add frontend
+          git diff --cached --quiet || git commit -m "fix(ui): restore result status icon import"
+          git push
