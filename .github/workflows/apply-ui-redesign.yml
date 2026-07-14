@@ -7,6 +7,12 @@ on:
     paths:
       - .github/ui-redesign/**
       - .github/workflows/apply-ui-redesign.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/ui-redesign/**
+      - .github/workflows/apply-ui-redesign.yml
 
 permissions:
   contents: write
@@ -18,6 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.head_ref || github.ref_name }}
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
