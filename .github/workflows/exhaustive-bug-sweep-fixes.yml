@@ -22,11 +22,6 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Upload current replacement tail
-        uses: actions/upload-artifact@v4
-        with:
-          name: sweep-tail-03-bytes
-          path: .github/sweep-fix-b64/tail-03
       - name: Reconstruct and verify repair script
         id: reconstruct
         continue-on-error: true
@@ -38,7 +33,7 @@ jobs:
           p0 = (root / 'part-00').read_bytes().strip()
           p1 = (root / 'part-01').read_bytes().strip()
           p2 = (root / 'part-02').read_bytes().strip()[:3621] + (root / 'tail-02').read_bytes().strip()
-          p3 = (root / 'part-03').read_bytes().strip()[:1210] + (root / 'tail-03').read_bytes().strip()
+          p3 = (root / 'part-03').read_bytes().strip()[:1210] + (root / 'tail-03').read_bytes().strip()[:4887] + (root / 'tail-03-end').read_bytes().strip()
           expected_parts = [
               (6500, '618ce58b506ebef77e84e50172822e1b7bc7050aff59ed32b622cbc2dd9e3d64'),
               (6500, '22a40f3b7a09eab5aa2bc3727674dc0c4a95b47f7441d2c9e93f37a4158ce942'),
