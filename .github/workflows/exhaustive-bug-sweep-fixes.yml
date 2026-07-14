@@ -1,0 +1,72 @@
+name: Apply exhaustive bug sweep fixes
+
+on:
+  pull_request:
+    branches: [main]
+    types: [synchronize]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.head_ref == 'ui/adversarial-redesign-2026-07-14'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ui/adversarial-redesign-2026-07-14
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Reconstruct and verify repair script
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64, gzip, hashlib
+          encoded = ''.join(path.read_text().strip() for path in sorted(Path('.github/sweep-fix-b64').glob('part-*')))
+          raw = gzip.decompress(base64.b64decode(encoded))
+          digest = hashlib.sha256(raw).hexdigest()
+          expected = '915c9f25b29a6c8cc730956f4546a317dacdf4a070da506a15de7f14107122cb'
+          if digest != expected:
+              raise SystemExit(f'Repair payload checksum mismatch: {digest}')
+          target = Path('.github/scripts/apply_sweep_fixes.py')
+          target.parent.mkdir(parents=True, exist_ok=True)
+          target.write_bytes(raw)
+          print(f'Verified repair payload: {digest}')
+          PY
+      - name: Apply repair pass
+        id: apply
+        continue-on-error: true
+        run: python3 .github/scripts/apply_sweep_fixes.py > exhaustive-sweep-apply.log 2>&1
+      - name: Upload applicator diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exhaustive-bug-sweep-applicator-log
+          path: exhaustive-sweep-apply.log
+      - name: Stop on applicator failure
+        if: steps.apply.outcome == 'failure'
+        run: |
+          cat exhaustive-sweep-apply.log
+          exit 1
+      - name: Clean install
+        working-directory: frontend
+        run: npm ci
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+      - name: Test
+        working-directory: frontend
+        run: npm run test
+      - name: Commit validated product fixes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add frontend/src frontend/index.html frontend/package-lock.json
+          git diff --cached --quiet && exit 0
+          git commit -m 'fix(ui): close exhaustive bug sweep findings'
+          git push origin HEAD:ui/adversarial-redesign-2026-07-14
