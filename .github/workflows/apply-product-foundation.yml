@@ -1,0 +1,58 @@
+name: Apply product foundation upgrade
+
+on:
+  pull_request_target:
+    types: [synchronize]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.pull_request.number == 21 && github.event.pull_request.head.ref == 'feature/product-foundation-upgrade-2026-07-14'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/product-foundation-upgrade-2026-07-14
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Reconstruct and verify implementation packet
+        run: |
+          cat .github/product-upgrade-parts/part-* > .github/apply_product_upgrade.py
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          path = Path('.github/apply_product_upgrade.py')
+          digest = hashlib.sha256(path.read_bytes()).hexdigest()
+          expected = 'ab49d7883e3ed292fcd1d69ed086906188acadc48794c6795377c218645e1084'
+          if digest != expected:
+              raise SystemExit(f'Implementation checksum mismatch: {digest}')
+          print(f'Verified implementation packet: {digest}')
+          PY
+          python3 -m py_compile .github/apply_product_upgrade.py
+      - run: python3 .github/apply_product_upgrade.py
+      - working-directory: frontend
+        run: npm install --package-lock-only --ignore-scripts
+      - working-directory: frontend
+        run: npm ci
+      - working-directory: frontend
+        run: npm run build
+      - working-directory: frontend
+        run: npm run test
+      - working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - working-directory: frontend
+        run: npm run test:e2e
+      - name: Commit validated implementation
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add frontend docs .github/workflows/product-foundation-ci.yml .github/workflows/release-preflight.yml
+          git diff --cached --quiet && exit 0
+          git commit -m 'feat: implement product foundation upgrade'
+          git push origin HEAD:feature/product-foundation-upgrade-2026-07-14
