@@ -1,0 +1,337 @@
+from pathlib import Path
+import re
+
+ROOT = Path('.')
+
+def write(path: str, content: str) -> None:
+    p = ROOT / path
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(content, encoding='utf-8')
+
+
+def replace(path: str, old: str, new: str, count: int = 1) -> None:
+    p = ROOT / path
+    text = p.read_text(encoding='utf-8')
+    actual = text.count(old)
+    if actual < count:
+        raise RuntimeError(f'{path}: expected at least {count} occurrence(s), found {actual}: {old[:100]!r}')
+    p.write_text(text.replace(old, new, count), encoding='utf-8')
+
+
+def regex_replace(path: str, pattern: str, repl: str, count: int = 1, flags: int = 0) -> None:
+    p = ROOT / path
+    text = p.read_text(encoding='utf-8')
+    updated, n = re.subn(pattern, repl, text, count=count, flags=flags)
+    if n != count:
+        raise RuntimeError(f'{path}: regex expected {count}, replaced {n}: {pattern[:120]!r}')
+    p.write_text(updated, encoding='utf-8')
+
+write('frontend/src/lib/uiState.ts', r'''import type { CaptionWord } from '../components/CaptionEditor';
+
+export const MAX_AUDIO_FILE_BYTES = 200 * 1024 * 1024;
+
+const AUDIO_EXTENSIONS = new Set(['mp3', 'wav', 'm4a', 'ogg', 'oga', 'webm', 'aac', 'flac', 'mp4']);
+
+export function validateAudioFile(file: Pick<File, 'name' | 'size' | 'type'>): string | null {
+  if (file.size <= 0) return 'This audio file is empty.';
+  if (file.size > MAX_AUDIO_FILE_BYTES) {
+    return 'This file exceeds the 200 MB upload limit. Long recordings may also exceed this device’s available memory.';
+  }
+  const extension = file.name.split('.').pop()?.toLowerCase() ?? '';
+  const looksLikeAudio = file.type.startsWith('audio/') || AUDIO_EXTENSIONS.has(extension);
+  if (!looksLikeAudio) return 'Choose an audio file such as MP3, WAV, M4A, OGG, WebM, AAC, or FLAC.';
+  return null;
+}
+
+export function formatTranscriptText(words: ReadonlyArray<Pick<CaptionWord, 'text'>>): string {
+  return words
+    .map((word) => word.text.trim())
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\s+([,.;:!?%\)\]\}])/g, '$1')
+    .replace(/([\(\[\{¿¡])\s+/g, '$1')
+    .replace(/\s+(['’])/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+''')
+
+write('frontend/src/lib/uiState.test.ts', r'''import { describe, expect, it } from 'vitest';
+import { formatTranscriptText, MAX_AUDIO_FILE_BYTES, validateAudioFile } from './uiState';
+
+describe('validateAudioFile', () => {
+  it('rejects empty and oversized files', () => {
+    expect(validateAudioFile({ name: 'empty.wav', size: 0, type: 'audio/wav' })).toContain('empty');
+    expect(validateAudioFile({ name: 'huge.mp3', size: MAX_AUDIO_FILE_BYTES + 1, type: 'audio/mpeg' })).toContain('200 MB');
+  });
+
+  it('accepts audio MIME types and known audio extensions', () => {
+    expect(validateAudioFile({ name: 'speech.bin', size: 10, type: 'audio/mpeg' })).toBeNull();
+    expect(validateAudioFile({ name: 'speech.m4a', size: 10, type: '' })).toBeNull();
+  });
+
+  it('rejects obvious non-audio files', () => {
+    expect(validateAudioFile({ name: 'notes.txt', size: 10, type: 'text/plain' })).toContain('audio file');
+  });
+});
+
+describe('formatTranscriptText', () => {
+  it('does not insert spaces before punctuation', () => {
+    const words = ['Hola', ',', 'mundo', '!', '¿', 'Cómo', 'estás', '?'].map((text) => ({ text }));
+    expect(formatTranscriptText(words)).toBe('Hola, mundo! ¿Cómo estás?');
+  });
+});
+''')
+
+write('frontend/src/hooks/useProjects.ts', r'''import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  deleteProject,
+  getProject,
+  listProjects,
+  putProject,
+  type ProjectMeta,
+  type StoredProject,
+} from '../lib/db';
+
+export type ProjectStoreStatus = 'idle' | 'loading' | 'saving' | 'deleting' | 'error';
+
+function messageFrom(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+export function useProjects() {
+  const [projects, setProjects] = useState<ProjectMeta[]>([]);
+  const [status, setStatus] = useState<ProjectStoreStatus>('idle');
+  const [error, setError] = useState<string | null>(null);
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const pendingSavesRef = useRef(0);
+
+  const loadProjects = useCallback(async () => {
+    setProjects(await listProjects());
+  }, []);
+
+  const refresh = useCallback(async () => {
+    setStatus('loading');
+    setError(null);
+    try {
+      await loadProjects();
+      setStatus('idle');
+    } catch (cause) {
+      setStatus('error');
+      setError(`Saved transcripts could not be loaded. ${messageFrom(cause)}`);
+    }
+  }, [loadProjects]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const save = useCallback((project: StoredProject): Promise<void> => {
+    pendingSavesRef.current += 1;
+    setStatus('saving');
+    setError(null);
+
+    const operation = saveQueueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        await putProject(project);
+        await loadProjects();
+      });
+
+    saveQueueRef.current = operation;
+    return operation.then(
+      () => {
+        pendingSavesRef.current -= 1;
+        if (pendingSavesRef.current === 0) setStatus('idle');
+      },
+      (cause) => {
+        pendingSavesRef.current -= 1;
+        setStatus('error');
+        setError(`This transcript was not saved. ${messageFrom(cause)}`);
+        throw cause;
+      }
+    );
+  }, [loadProjects]);
+
+  const open = useCallback(async (id: string) => {
+    setError(null);
+    try {
+      return await getProject(id);
+    } catch (cause) {
+      setStatus('error');
+      setError(`That saved transcript could not be opened. ${messageFrom(cause)}`);
+      return undefined;
+    }
+  }, []);
+
+  const remove = useCallback(async (id: string) => {
+    setStatus('deleting');
+    setError(null);
+    try {
+      await deleteProject(id);
+      await loadProjects();
+      setStatus('idle');
+    } catch (cause) {
+      setStatus('error');
+      setError(`That transcript could not be deleted. ${messageFrom(cause)}`);
+      throw cause;
+    }
+  }, [loadProjects]);
+
+  const rename = useCallback(async (id: string, name: string) => {
+    const existing = await getProject(id);
+    if (!existing) return;
+    await save({ ...existing, name, updatedAt: Date.now() });
+  }, [save]);
+
+  return { projects, status, error, refresh, save, open, remove, rename };
+}
+''')
+
+write('frontend/src/components/LibraryModal.tsx', r'''import { useEffect, useRef, useState } from 'react';
+import { AlertTriangle, Clock, FileAudio, FolderOpen, Loader2, Trash2 } from 'lucide-react';
+import { Modal } from './Modal';
+import type { ProjectMeta } from '../lib/db';
+import type { ProjectStoreStatus } from '../hooks/useProjects';
+
+interface LibraryModalProps {
+  open: boolean;
+  onClose: () => void;
+  projects: ProjectMeta[];
+  status: ProjectStoreStatus;
+  error: string | null;
+  onRetry: () => void;
+  onOpenProject: (id: string) => Promise<void> | void;
+  onDeleteProject: (id: string) => Promise<void> | void;
+}
+
+function relativeDate(ms: number): string {
+  const date = new Date(ms);
+  return `${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · ${date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
+}
+
+function duration(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const remainder = Math.round(seconds % 60);
+  return minutes > 0 ? `${minutes}m ${remainder}s` : `${remainder}s`;
+}
+
+export function LibraryModal({
+  open,
+  onClose,
+  projects,
+  status,
+  error,
+  onRetry,
+  onOpenProject,
+  onDeleteProject,
+}: LibraryModalProps) {
+  const [pendingDelete, setPendingDelete] = useState<ProjectMeta | null>(null);
+  const [openingId, setOpeningId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const cancelDeleteRef = useRef<HTMLButtonElement | null>(null);
+  const loading = status === 'loading';
+  const busy = openingId !== null || deletingId !== null;
+
+  useEffect(() => {
+    if (!open) {
+      setPendingDelete(null);
+      setOpeningId(null);
+      setDeletingId(null);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (pendingDelete) cancelDeleteRef.current?.focus();
+  }, [pendingDelete]);
+
+  const openProject = async (id: string) => {
+    setOpeningId(id);
+    try {
+      await onOpenProject(id);
+    } finally {
+      setOpeningId(null);
+    }
+  };
+
+  const deleteProject = async () => {
+    if (!pendingDelete) return;
+    setDeletingId(pendingDelete.id);
+    try {
+      await onDeleteProject(pendingDelete.id);
+      setPendingDelete(null);
+    } catch {
+      // The store exposes the actionable error above the list.
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Saved transcripts" labelledBy="library-title">
+      {error && (
+        <div className="state-message state-message--error" role="alert">
+          <AlertTriangle aria-hidden="true" />
+          <div>
+            <strong>Library unavailable</strong>
+            <p>{error}</p>
+            <button type="button" onClick={onRetry} className="secondary-button">Try again</button>
+          </div>
+        </div>
+      )}
+
+      {loading && projects.length === 0 ? (
+        <div className="empty-state" role="status">
+          <Loader2 className="animate-spin" aria-hidden="true" />
+          <p>Loading saved transcripts…</p>
+        </div>
+      ) : projects.length === 0 && !error ? (
+        <div className="empty-state">
+          <FolderOpen aria-hidden="true" />
+          <h3>Nothing saved yet</h3>
+          <p>Completed transcripts appear here after they are saved on this device.</p>
+        </div>
+      ) : (
+        <div className="library-list" aria-busy={busy}>
+          {projects.map((project) => (
+            <div key={project.id} className="library-row">
+              <FileAudio aria-hidden="true" />
+              <button
+                type="button"
+                onClick={() => void openProject(project.id)}
+                disabled={busy}
+                className="library-row__open"
+              >
+                <strong>{openingId === project.id ? 'Opening…' : project.name}</strong>
+                <span><Clock aria-hidden="true" /> {relativeDate(project.updatedAt)} · {duration(project.durationSec)}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPendingDelete(project)}
+                disabled={busy}
+                aria-label={`Delete ${project.name}`}
+                className="icon-button icon-button--danger"
+              >
+                <Trash2 aria-hidden="true" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {pendingDelete && (
+        <div className="delete-confirmation" role="alertdialog" aria-modal="true" aria-labelledby="delete-project-title">
+          <h3 id="delete-project-title">Delete “{pendingDelete.name}”?</h3>
+          <p>The transcript, translation, edits, and any retained source audio will be permanently removed.</p>
+          <div className="dialog-actions">
+            <button ref={cancelDeleteRef} type="button" onClick={() => setPendingDelete(null)} disabled={deletingId !== null} className="secondary-button">Cancel</button>
+            <button type="button" onClick={() => void deleteProject()} disabled={deletingId !== null} className="danger-button">
+              {deletingId ? 'Deleting…' : 'Delete permanently'}
+            </button>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+''')
