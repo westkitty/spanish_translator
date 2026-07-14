@@ -22,6 +22,11 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - name: Upload current replacement tail
+        uses: actions/upload-artifact@v4
+        with:
+          name: sweep-tail-03-bytes
+          path: .github/sweep-fix-b64/tail-03
       - name: Reconstruct and verify repair script
         id: reconstruct
         continue-on-error: true
@@ -47,10 +52,8 @@ jobs:
               if (length, digest) != expected:
                   raise SystemExit(f'Part {index} fingerprint mismatch')
           encoded = b''.join(parts)
-          print('encoded', len(encoded), hashlib.sha256(encoded).hexdigest())
           raw = gzip.decompress(base64.b64decode(encoded))
           digest = hashlib.sha256(raw).hexdigest()
-          print('decoded', len(raw), digest)
           expected = '915c9f25b29a6c8cc730956f4546a317dacdf4a070da506a15de7f14107122cb'
           if digest != expected:
               raise SystemExit(f'Repair payload checksum mismatch: {digest}')
