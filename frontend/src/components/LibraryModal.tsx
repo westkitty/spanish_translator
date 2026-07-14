@@ -24,6 +24,13 @@ function fmtDuration(sec: number): string {
 }
 
 export function LibraryModal({ open, onClose, projects, onOpenProject, onDeleteProject }: LibraryModalProps) {
+  const confirmDelete = (project: ProjectMeta) => {
+    const confirmed = window.confirm(
+      `Delete “${project.name}”?\n\nThis permanently removes the saved transcript, translation, edits, and retained audio from this device.`
+    );
+    if (confirmed) onDeleteProject(project.id);
+  };
+
   return (
     <Modal open={open} onClose={onClose} title="Your saved transcripts" labelledBy="library-title">
       {projects.length === 0 ? (
@@ -49,7 +56,7 @@ export function LibraryModal({ open, onClose, projects, onOpenProject, onDeleteP
                 </p>
               </button>
               <button
-                onClick={() => onDeleteProject(p.id)}
+                onClick={() => confirmDelete(p)}
                 aria-label={`Delete ${p.name}`}
                 className="shrink-0 p-1.5 rounded-lg text-slate-500 hover:text-rose-300 hover:bg-rose-500/10 transition-colors cursor-pointer"
               >
