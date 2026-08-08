@@ -4,7 +4,7 @@ import type { RunProgress, TranscriberStatus } from '../hooks/useTranscriber';
 
 interface ProgressPanelProps {
   status: TranscriberStatus;
-  modelProgress: number; // 0-100 aggregate model download
+  modelProgress: number;
   progress: RunProgress | null;
   onCancel: () => void;
 }
@@ -35,7 +35,6 @@ function friendlyElapsed(ms: number): string {
 }
 
 export function ProgressPanel({ status, modelProgress, progress, onCancel }: ProgressPanelProps) {
-  // Smoothly tick the displayed countdown between the coarse per-window updates.
   const anchorRef = useRef<{ endAt: number | null; elapsedBase: number; at: number }>({
     endAt: null,
     elapsedBase: 0,
@@ -45,11 +44,11 @@ export function ProgressPanel({ status, modelProgress, progress, onCancel }: Pro
 
   useEffect(() => {
     anchorRef.current = {
-      endAt: progress?.etaMs != null ? Date.now() + progress.etaMs : null,
+      endAt: status === 'transcribing' && progress?.etaMs != null ? Date.now() + progress.etaMs : null,
       elapsedBase: progress?.elapsedMs ?? 0,
       at: Date.now(),
     };
-  }, [progress?.etaMs, progress?.elapsedMs]);
+  }, [status, progress?.etaMs, progress?.elapsedMs]);
 
   useEffect(() => {
     const id = window.setInterval(() => force((n) => n + 1), 1000);
@@ -58,30 +57,46 @@ export function ProgressPanel({ status, modelProgress, progress, onCancel }: Pro
 
   const now = Date.now();
   const liveEta =
-    anchorRef.current.endAt != null ? Math.max(0, anchorRef.current.endAt - now) : progress?.etaMs ?? null;
+    status === 'transcribing' && anchorRef.current.endAt != null
+      ? Math.max(0, anchorRef.current.endAt - now)
+      : null;
   const liveElapsed = anchorRef.current.elapsedBase + (now - anchorRef.current.at);
 
   const isDownloading = status === 'loading-model' && modelProgress > 0;
-  const determinate = isDownloading ? modelProgress / 100 : progress?.fraction ?? null;
+  const determinate = isDownloading
+    ? modelProgress / 100
+    : status === 'transcribing'
+      ? progress?.fraction ?? null
+      : null;
   const headline = HEADLINES[status] ?? 'Working on it…';
 
+  const detail = isDownloading
+    ? `Downloading the model — ${modelProgress}%`
+    : status === 'decoding'
+      ? 'Reading and preparing your file…'
+      : status === 'transcribing'
+        ? friendlyRemaining(liveEta)
+        : status === 'translating'
+          ? 'Translation time varies by sentence length.'
+          : 'Working on your device…';
+
   return (
-    <div className="glass rounded-2xl p-6 flex flex-col items-center text-center space-y-4">
+    <div className="glass rounded-2xl p-6 flex flex-col items-center text-center space-y-4" aria-live="polite">
       <Loader2 className="w-9 h-9 text-sky-300 animate-spin" />
 
       <div>
         <h3 className="text-base font-bold text-slate-100">{headline}</h3>
-        <p className="text-[11px] text-slate-400 mt-1" aria-live="polite">
-          {isDownloading
-            ? `Downloading the model — ${modelProgress}% (one time only)`
-            : status === 'decoding'
-            ? 'Reading your file…'
-            : friendlyRemaining(liveEta)}
-        </p>
+        <p className="text-[11px] text-slate-400 mt-1">{detail}</p>
       </div>
 
-      {/* Progress bar */}
-      <div className="w-full max-w-md bg-white/[0.04] rounded-full h-2.5 overflow-hidden border border-white/10">
+      <div
+        className="w-full max-w-md bg-white/[0.04] rounded-full h-2.5 overflow-hidden border border-white/10"
+        role="progressbar"
+        aria-label={headline}
+        aria-valuemin={determinate != null ? 0 : undefined}
+        aria-valuemax={determinate != null ? 100 : undefined}
+        aria-valuenow={determinate != null ? Math.round(determinate * 100) : undefined}
+      >
         {determinate != null ? (
           <div
             className="bg-gradient-to-r from-sky-400 to-blue-500 h-full rounded-full transition-all duration-500"
@@ -98,7 +113,7 @@ export function ProgressPanel({ status, modelProgress, progress, onCancel }: Pro
       </div>
 
       <p className="text-[11px]" style={{ color: 'var(--text-subtle)' }}>
-        Everything runs on your device — your audio never leaves it.
+        Processing runs on this device. Model files may be downloaded when they are not already cached.
       </p>
 
       <button

@@ -16,7 +16,8 @@
 // `hypothesis` may be omitted/empty; such cases are reported as PENDING and
 // skipped from the aggregate. `audio` is documentation only (which file to run).
 //
-// Run:  node eval/run-eval.ts [--gate <maxWer>] [--fold-diacritics]
+// Run: node eval/run-eval.ts [--gate <maxWer>] [--min-cases <count>]
+//      [--fold-diacritics]
 // Node 23+ strips TS types natively, so no build step is needed.
 
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
@@ -41,15 +42,32 @@ interface EvalCase {
 
 const args = process.argv.slice(2);
 const gateIdx = args.indexOf('--gate');
+const minCasesIdx = args.indexOf('--min-cases');
 const gate = gateIdx >= 0 ? Number(args[gateIdx + 1]) : null;
+const minCases = minCasesIdx >= 0 ? Number(args[minCasesIdx + 1]) : gate !== null ? 1 : 0;
 const foldDiacritics = args.includes('--fold-diacritics');
+
+if (gate !== null && (!Number.isFinite(gate) || gate < 0)) {
+  console.error('FAIL: --gate requires a non-negative numeric WER threshold.');
+  process.exit(2);
+}
+if (!Number.isInteger(minCases) || minCases < 0) {
+  console.error('FAIL: --min-cases requires a non-negative integer.');
+  process.exit(2);
+}
 
 function loadCases(): EvalCase[] {
   if (!existsSync(casesDir)) return [];
+  const seen = new Set<string>();
   return readdirSync(casesDir)
     .filter((f) => f.endsWith('.json'))
     .map((f) => {
       const c = JSON.parse(readFileSync(join(casesDir, f), 'utf8')) as EvalCase;
+      if (!c.id?.trim()) throw new Error(`${f}: missing non-empty id`);
+      if (!c.reference?.trim()) throw new Error(`${f}: missing non-empty Spanish reference`);
+      if (seen.has(c.id)) throw new Error(`${f}: duplicate case id "${c.id}"`);
+      seen.add(c.id);
+
       // Allow an external hypotheses/<id>.txt to override the inline field.
       const ext = join(hypDir, `${c.id}.txt`);
       if (existsSync(ext)) c.hypothesis = readFileSync(ext, 'utf8').trim();
@@ -60,14 +78,21 @@ function loadCases(): EvalCase[] {
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 
-const cases = loadCases();
+let cases: EvalCase[];
+try {
+  cases = loadCases();
+} catch (error) {
+  console.error(`FAIL: invalid evaluation corpus. ${error instanceof Error ? error.message : String(error)}`);
+  process.exit(2);
+}
+
 if (cases.length === 0) {
-  console.log(
+  console.error(
     '\nNo eval cases found in eval/cases/.\n' +
       'Add <id>.json files with { id, audio, reference } and a hypothesis\n' +
       '(inline or at eval/hypotheses/<id>.txt) to measure accuracy.\n'
   );
-  process.exit(0);
+  process.exit(minCases > 0 || gate !== null ? 1 : 0);
 }
 
 const opts = { foldDiacritics };
@@ -93,8 +118,8 @@ for (const c of cases) {
     continue;
   }
   const s = scoreTranscript(c.reference, c.hypothesis, opts);
-  // `example-*` cases are documentation of the scoring output; they don't count
-  // toward the aggregate or the regression gate.
+  // `example-*` cases document scoring output; they never count toward release
+  // aggregates or gates.
   const isExample = c.id.startsWith('example');
   if (!isExample) {
     totalEdits += s.substitutions + s.deletions + s.insertions;
@@ -110,9 +135,12 @@ for (const c of cases) {
 }
 
 console.log('-'.repeat(64));
-const aggWer = totalRefWords ? totalEdits / totalRefWords : 0;
-const aggCer = totalRefChars ? totalCharEdits / totalRefChars : 0;
-console.log(`${pad('AGGREGATE', 16)}${pad(pct(aggWer), 10)}${pad(pct(aggCer), 10)}`);
+const aggWer = totalRefWords ? totalEdits / totalRefWords : Number.NaN;
+const aggCer = totalRefChars ? totalCharEdits / totalRefChars : Number.NaN;
+console.log(
+  `${pad('AGGREGATE', 16)}${pad(Number.isFinite(aggWer) ? pct(aggWer) : 'NO DATA', 10)}` +
+    `${pad(Number.isFinite(aggCer) ? pct(aggCer) : 'NO DATA', 10)}`
+);
 console.log('='.repeat(64));
 console.log(
   `Scored ${scored} clip(s), ${pending} pending. ` +
@@ -121,7 +149,7 @@ console.log(
 
 // Optional translation quality (chrF) for cases that supply English references.
 const translationCases = cases.filter(
-  (c) => c.referenceTranslation && c.hypothesisTranslation
+  (c) => c.referenceTranslation && c.hypothesisTranslation && !c.id.startsWith('example')
 );
 if (translationCases.length > 0) {
   console.log('Translation quality (chrF, higher is better)');
@@ -136,7 +164,13 @@ if (translationCases.length > 0) {
   console.log(`${pad('MEAN chrF', 24)}${((chrfSum / translationCases.length) * 100).toFixed(1)}\n`);
 }
 
-if (gate !== null && aggWer > gate) {
-  console.error(`FAIL: aggregate WER ${pct(aggWer)} exceeds gate ${pct(gate)}.`);
+if (scored < minCases) {
+  console.error(`FAIL: scored ${scored} eligible case(s); gate requires at least ${minCases}.`);
+  process.exit(1);
+}
+
+if (gate !== null && (!Number.isFinite(aggWer) || aggWer > gate)) {
+  const observed = Number.isFinite(aggWer) ? pct(aggWer) : 'no aggregate data';
+  console.error(`FAIL: aggregate WER ${observed} does not satisfy gate ${pct(gate)}.`);
   process.exit(1);
 }
